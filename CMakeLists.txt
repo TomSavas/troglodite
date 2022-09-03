@@ -6,7 +6,7 @@ set(EXEC ${PROJECT})
 
 set(CMAKE_CXX_STANDARD 11)
 
-set(CMAKE_CXX_FLAGS_DEBUG "-ggdb -O1 -DDEBUG -lvulkan")
+set(CMAKE_CXX_FLAGS_DEBUG "-ggdb -O0 -DDEBUG -lvulkan")
 set(CMAKE_CXX_FLAGS_RELEASE "-O2 -lvulkan")
 
 file(GLOB_RECURSE SOURCES "src/*.cpp")
@@ -31,3 +31,29 @@ add_subdirectory(lib/glm)
 target_link_libraries(${PROJECT} glm::glm)
 
 add_definitions(-DGLFW_INCLUDE_NONE)
+
+find_program(GLSL_VALIDATOR glslangValidator HINTS /usr/bin /usr/local/bin $ENV{VULKAN_SDK}/Bin/ $ENV{VULKAN_SDK}/Bin32/)
+file(GLOB_RECURSE GLSL_SOURCE_FILES
+    "${PROJECT_SOURCE_DIR}/src/shaders/*.glsl"
+)
+
+set(SPV_MAKE_DIRECTORY "${PROJECT_BINARY_DIR}/shaders")
+file(MAKE_DIRECTORY "${SPV_MAKE_DIRECTORY}")
+
+foreach(GLSL ${GLSL_SOURCE_FILES})
+    get_filename_component(FILE_NAME ${GLSL} NAME)
+    set(SPIRV "${SPV_MAKE_DIRECTORY}/${FILE_NAME}.spv")
+    add_custom_command(
+        OUTPUT ${SPIRV}
+        COMMAND ${GLSL_VALIDATOR} -V ${GLSL} -o ${SPIRV}
+        DEPENDS ${GLSL}
+        COMMENT "Compiling ${GLSL}"
+    )
+    list(APPEND SPIRV_BINARY_FILES ${SPIRV})
+endforeach(GLSL)
+
+add_custom_target(
+    Shaders
+    ALL
+    DEPENDS ${SPIRV_BINARY_FILES}
+)
