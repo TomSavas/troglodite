@@ -4,7 +4,7 @@ set(PROJECT troglodite)
 project(${PROJECT})
 set(EXEC ${PROJECT})
 
-set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD 17)
 
 set(CMAKE_CXX_FLAGS_DEBUG "-ggdb -O0 -DDEBUG -lvulkan")
 set(CMAKE_CXX_FLAGS_RELEASE "-O2 -lvulkan")
@@ -13,10 +13,14 @@ file(GLOB_RECURSE SOURCES "src/*.cpp")
 
 add_executable(${EXEC} ${SOURCES})
 target_include_directories(${PROJECT} PRIVATE src/)
+target_include_directories(${PROJECT} PRIVATE lib/tinygltf)
+target_include_directories(${PROJECT} PRIVATE lib/tinyobjloader)
 
 set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
 set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+
+target_include_directories(${PROJECT} PRIVATE lib/VulkanMemoryAllocator/include)
 
 find_package(Vulkan REQUIRED FATAL_ERROR)
 target_link_libraries(${PROJECT} Vulkan::Vulkan)
