@@ -1,5 +1,7 @@
 #pragma once
 
+#include <deque>
+#include <functional>
 #include <iostream>
 #include <signal.h>
 #include <unistd.h>
@@ -25,6 +27,13 @@
     }                                                              \
 } while (0)
 
+struct FunctionQueue {
+    std::deque<std::function<void()>> functions;
+
+    void enqueue(std::function<void()>&& func);
+    void execute();
+};
+
 struct VulkanPipelineBuilder {
     std::vector<VkPipelineShaderStageCreateInfo> shaderStages;
     VkPipelineVertexInputStateCreateInfo vertexInputInfo;
@@ -41,6 +50,8 @@ struct VulkanPipelineBuilder {
 };
 
 struct VulkanBackend { 
+    FunctionQueue deinitQueue;
+
     vkb::Instance vkbInstance;
     VkInstance instance;
     VkDebugUtilsMessengerEXT debugMessenger;

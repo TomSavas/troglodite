@@ -11,6 +11,22 @@
 #include "vulkan/mesh.h"
 #include "vulkan/vk_shader.h"
 
+#define LOG_CALL(code) do {                                      \
+        std::cout << "Calling deinitQueue: " #code << std::endl; \
+        code;                                                    \
+    }                                                            \
+    while(0)
+
+void FunctionQueue::enqueue(std::function<void()>&& func) {
+    functions.push_back(func);
+}
+
+void FunctionQueue::execute() {
+    for (auto& func : functions) {
+        func();
+    }
+}
+
 VkPipeline VulkanPipelineBuilder::build(VkDevice device, VkRenderPass pass) {
     VkPipelineViewportStateCreateInfo viewportState = {};
     viewportState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
@@ -65,7 +81,6 @@ VkPipeline VulkanPipelineBuilder::build(VkDevice device, VkRenderPass pass) {
     backend.initDefaultRenderpass();
     backend.initFramebuffers();
     backend.initSyncStructs();
-    backend.initSyncStructs();
     backend.initPipelines();
 
     backend.loadMeshes();
@@ -106,7 +121,10 @@ void VulkanBackend::uploadMesh(Mesh& mesh) {
                 &mesh.vertexBuffer.buffer, &mesh.vertexBuffer.allocation,
                 nullptr));
     
-    // TODO: delete buffer
+    // TEMP: assets should have a better way of de-initing
+    deinitQueue.enqueue([=]() {
+        LOG_CALL(vmaDestroyBuffer(allocator, mesh.vertexBuffer.buffer, mesh.vertexBuffer.allocation));
+    });
     
     void* vertexData;
     vmaMapMemory(allocator, mesh.vertexBuffer.allocation, &vertexData);
@@ -115,27 +133,14 @@ void VulkanBackend::uploadMesh(Mesh& mesh) {
 }
 
 void VulkanBackend::deinit() {
-    vkDestroyFence(device, renderFence, nullptr);
-    vkDestroySemaphore(device, presentSem, nullptr);
-    vkDestroySemaphore(device, renderSem, nullptr);
+    deinitQueue.execute();
 
-    vkDestroyCommandPool(device, commandPool, nullptr);
-
-    vkDestroySwapchainKHR(device, swapchain, nullptr);
-    vkDestroyRenderPass(device, defaultRenderpass, nullptr);
-
-    //destroy swapchain resources
-    for (int i = 0; i < swapchainImageViews.size(); i++) {
-        vkDestroyFramebuffer(device, framebuffers[i], nullptr);
-        vkDestroyImageView(device, swapchainImageViews[i], nullptr);
-    }
+    vmaDestroyAllocator(allocator);
 
     vkDestroyDevice(device, nullptr);
     vkDestroySurfaceKHR(instance, surface, nullptr);
     vkb::destroy_debug_utils_messenger(instance, debugMessenger);
     vkDestroyInstance(instance, nullptr);
-
-    vmaDestroyAllocator(allocator);
 }
 
 void VulkanBackend::initVulkan(GLFWwindow* window) {
@@ -192,6 +197,10 @@ void VulkanBackend::initSwapchain() {
     swapchainImageViews = vkbSwapchain.get_image_views().value();
     swapchainImageFormat = vkbSwapchain.image_format;
 
+    deinitQueue.enqueue([=]() {
+        LOG_CALL(vkDestroySwapchainKHR(device, swapchain, nullptr));
+    });
+
     VkExtent3D depthImageExtent = { 640, 480, 1 };
     depthFormat = VK_FORMAT_D32_SFLOAT;
 
@@ -202,8 +211,16 @@ void VulkanBackend::initSwapchain() {
     depthImageAlloc.requiredFlags = VkMemoryPropertyFlags(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
     vmaCreateImage(allocator, &depthImageInfo, &depthImageAlloc, &depthImage.image, &depthImage.allocation, nullptr);
 
+    deinitQueue.enqueue([=]() {
+        LOG_CALL(vmaDestroyImage(allocator, depthImage.image, depthImage.allocation));
+    });
+
     VkImageViewCreateInfo depthViewInfo = imageViewCreateInfo(depthFormat, depthImage.image, VK_IMAGE_ASPECT_DEPTH_BIT);
     VK_CHECK(vkCreateImageView(device, &depthViewInfo, nullptr, &depthImageView));
+
+    deinitQueue.enqueue([=]() {
+        LOG_CALL(vkDestroyImageView(device, depthImageView, nullptr));
+    });
 
     //TODO: delete depth stuff
 }
@@ -220,7 +237,9 @@ void VulkanBackend::initCommandBuffers() {
     commandPoolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
 
     VK_CHECK(vkCreateCommandPool(device, &commandPoolInfo, nullptr, &commandPool));
-
+    deinitQueue.enqueue([=]() {
+        LOG_CALL(vkDestroyCommandPool(device, commandPool, nullptr));
+    });
 
     //allocate the default command buffer that we will use for rendering
     VkCommandBufferAllocateInfo cmdAllocInfo = {};
@@ -319,6 +338,9 @@ void VulkanBackend::initDefaultRenderpass() {
     renderPassInfo.pDependencies = &subpassDependencies[0];
 
     VK_CHECK(vkCreateRenderPass(device, &renderPassInfo, nullptr, &defaultRenderpass));
+    deinitQueue.enqueue([=]() {
+        LOG_CALL(vkDestroyRenderPass(device, defaultRenderpass, nullptr));
+    });
 }
 
 void VulkanBackend::initFramebuffers() {
@@ -346,6 +368,16 @@ void VulkanBackend::initFramebuffers() {
 
         VK_CHECK(vkCreateFramebuffer(device, &fbInfo, nullptr, &framebuffers[i]));
     }
+
+    deinitQueue.enqueue([=]() {
+        LOG_CALL(
+            for (int i = 0; i < swapchainImageViews.size(); i++) {
+                vkDestroyFramebuffer(device, framebuffers[i], nullptr);
+                // TODO: maybe where it's created?
+                vkDestroyImageView(device, swapchainImageViews[i], nullptr);
+            }
+        );
+    });
 }
 
 void VulkanBackend::initSyncStructs() {
@@ -358,6 +390,9 @@ void VulkanBackend::initSyncStructs() {
     fenceCreateInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
 
     VK_CHECK(vkCreateFence(device, &fenceCreateInfo, nullptr, &renderFence));
+    deinitQueue.enqueue([=](){
+        LOG_CALL(vkDestroyFence(device, renderFence, nullptr));
+    });
 
     //for the semaphores we don't need any flags
     VkSemaphoreCreateInfo semaphoreCreateInfo = {};
@@ -367,6 +402,12 @@ void VulkanBackend::initSyncStructs() {
 
     VK_CHECK(vkCreateSemaphore(device, &semaphoreCreateInfo, nullptr, &presentSem));
     VK_CHECK(vkCreateSemaphore(device, &semaphoreCreateInfo, nullptr, &renderSem));
+    deinitQueue.enqueue([=](){
+        LOG_CALL(
+            vkDestroySemaphore(device, presentSem, nullptr);
+            vkDestroySemaphore(device, renderSem, nullptr);
+        );
+    });
 }
 
 void VulkanBackend::draw() {
@@ -501,6 +542,9 @@ void VulkanBackend::initPipelines() {
     layoutInfo.pushConstantRangeCount = 1;
 
     VK_CHECK(vkCreatePipelineLayout(device, &layoutInfo, nullptr, &pipelineLayout));
+    deinitQueue.enqueue([=]() {
+        LOG_CALL(vkDestroyPipelineLayout(device, pipelineLayout, nullptr));
+    });
 
     VkShaderModule triangleVert;
     //if (!loadShaderModule("./shaders/triangle.vert.glsl.spv", device, &triangleVert)) {
@@ -550,8 +594,13 @@ void VulkanBackend::initPipelines() {
 
     pipeline = builder.build(device, defaultRenderpass);
 
-    //vkDestroyShaderModule(device, triangleVert, nullptr);
-    //vkDestroyShaderModule(device, triangleFrag, nullptr);
+    deinitQueue.enqueue([=]() {
+        LOG_CALL(vkDestroyPipeline(device, pipeline, nullptr));
+    });
+
+    // Compiled into the pipeline, no need to have them hanging around any more
+    vkDestroyShaderModule(device, triangleVert, nullptr);
+    vkDestroyShaderModule(device, triangleFrag, nullptr);
 
     //vkDestroyPipeline(device, pipeline, nullptr);
     //vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
