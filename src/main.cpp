@@ -26,6 +26,10 @@ int main(void) {
     //ImGui::StyleColorsDark();
 
     VulkanBackend backend = VulkanBackend::init(window);
+    
+    backend.scene.initTestScene();
+    backend.scene.mainCamera.pos = { 0.f, -6.f, -10.f };
+
     while(!glfwWindowShouldClose(window)) {
         glfwPollEvents();
         backend.draw();

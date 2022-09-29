@@ -74,7 +74,7 @@ VkPipeline VulkanPipelineBuilder::build(VkDevice device, VkRenderPass pass) {
 
 /*static*/ VulkanBackend VulkanBackend::init(GLFWwindow* window) {
     VulkanBackend backend;
-
+    
     backend.initVulkan(window);
     backend.initSwapchain();
     backend.initCommandBuffers();
@@ -89,23 +89,22 @@ VkPipeline VulkanPipelineBuilder::build(VkDevice device, VkRenderPass pass) {
 }
 
 void VulkanBackend::loadMeshes() {
-    //make the array 3 vertices long
-    triangleMesh.vertices.resize(3);
+    // TODO: get rid of copying
+    Mesh suzanneMesh;
+    suzanneMesh.loadFromObj("/home/savas/Projects/ignoramus_renderer/assets/suzanne.obj");
+    scene.meshes["suzanne"] = suzanneMesh;
+    uploadMesh(scene.meshes["suzanne"]);
 
-    //vertex positions
+    Mesh triangleMesh;
+    triangleMesh.vertices.resize(3);
     triangleMesh.vertices[0].position = { 1.f, 1.f, 0.0f };
     triangleMesh.vertices[1].position = {-1.f, 1.f, 0.0f };
     triangleMesh.vertices[2].position = { 0.f,-1.f, 0.0f };
-
-    //vertex colors, all green
     triangleMesh.vertices[0].color = { 0.f, 1.f, 0.0f }; //pure green
     triangleMesh.vertices[1].color = { 0.f, 1.f, 0.0f }; //pure green
     triangleMesh.vertices[2].color = { 0.f, 1.f, 0.0f }; //pure green
-
-    //we don't care about the vertex normals
-    triangleMesh.loadFromObj("/home/savas/Projects/ignoramus_renderer/assets/suzanne.obj");
-
-    uploadMesh(triangleMesh);
+    scene.meshes["triangle"] = triangleMesh;
+    uploadMesh(scene.meshes["triangle"]);
 }
 
 void VulkanBackend::uploadMesh(Mesh& mesh) {
@@ -461,25 +460,7 @@ void VulkanBackend::draw() {
     rpInfo.pClearValues = clearValues;
 
     vkCmdBeginRenderPass(cmd, &rpInfo, VK_SUBPASS_CONTENTS_INLINE);
-    {
-        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
-
-        glm::vec3 cameraPos = { 0.f, 0.f, -2.f };
-        glm::mat4 view = glm::translate(glm::mat4(1.f), cameraPos);
-        glm::mat4 projection = glm::perspective(glm::radians(70.f), 1700.f / 900.f, 0.1f, 200.f);
-        projection[1][1] *= -1; 
-        glm::mat4 model = glm::rotate(glm::mat4{ 1.f }, glm::radians(frameNumber * 0.4f), glm::vec3(0, 1, 0));
-
-        MeshPushConstants constants;
-        constants.MVP = projection * view * model;
-
-        vkCmdPushConstants(cmd, pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(MeshPushConstants), &constants);
-
-        //vkCmdDraw(cmd, 3, 1, 0, 0);
-        VkDeviceSize offset = 0;
-        vkCmdBindVertexBuffers(cmd, 0, 1, &triangleMesh.vertexBuffer.buffer, &offset);
-        vkCmdDraw(cmd, triangleMesh.vertices.size(), 1, 0, 0);
-    }
+    scene.draw(cmd);
     vkCmdEndRenderPass(cmd);
     //finalize the command buffer (we can no longer add commands, but it can now be executed)
     VK_CHECK(vkEndCommandBuffer(cmd));
@@ -593,6 +574,7 @@ void VulkanBackend::initPipelines() {
     builder.pipelineLayout = pipelineLayout;
 
     pipeline = builder.build(device, defaultRenderpass);
+    scene.createMaterial(pipeline, pipelineLayout, "defaultMaterial");
 
     deinitQueue.enqueue([=]() {
         LOG_CALL(vkDestroyPipeline(device, pipeline, nullptr));

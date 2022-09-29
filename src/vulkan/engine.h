@@ -13,6 +13,7 @@
 #include "VkBootstrap.h"
 
 #include "vulkan/mesh.h"
+#include "vulkan/scene.h"
 #include "vulkan/types.h"
 #include "vulkan/vk_init_helpers.h"
 
@@ -51,6 +52,8 @@ struct VulkanPipelineBuilder {
 
 struct VulkanBackend { 
     FunctionQueue deinitQueue;
+
+    Scene scene;
 
     vkb::Instance vkbInstance;
     VkInstance instance;
@@ -91,7 +94,6 @@ struct VulkanBackend {
     AllocatedImage depthImage;
 
     VkFormat depthFormat;
-
 
     static VulkanBackend init(GLFWwindow* window);
     void deinit();
