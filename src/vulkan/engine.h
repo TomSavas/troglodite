@@ -50,7 +50,19 @@ struct VulkanPipelineBuilder {
     VkPipeline build(VkDevice device, VkRenderPass pass);
 };
 
+struct FrameData {
+    VkSemaphore presentSem;
+    VkSemaphore renderSem;
+    VkFence renderFence;
+
+    VkCommandPool cmdPool;
+    VkCommandBuffer cmdBuffer;
+};
+
 struct VulkanBackend { 
+    static constexpr int MAX_FRAMES_IN_FLIGHT = 2;
+    FrameData inFlightFrames[MAX_FRAMES_IN_FLIGHT];
+
     FunctionQueue deinitQueue;
 
     Scene scene;
@@ -70,15 +82,8 @@ struct VulkanBackend {
     //array of image-views from the swapchain
     std::vector<VkImageView> swapchainImageViews;
 
-    VkSemaphore presentSem;
-    VkSemaphore renderSem;
-    VkFence renderFence;
-
     VkQueue graphicsQueue;
     uint32_t graphicsQueueFamily;
-
-    VkCommandPool commandPool;
-    VkCommandBuffer mainCommandBuffer;
 
     VkRenderPass defaultRenderpass;
     std::vector<VkFramebuffer> framebuffers;
@@ -95,6 +100,8 @@ struct VulkanBackend {
 
     VkFormat depthFormat;
 
+    int frameNumber;
+
     static VulkanBackend init(GLFWwindow* window);
     void deinit();
 
@@ -110,4 +117,6 @@ struct VulkanBackend {
     void uploadMesh(Mesh& mesh);
 
     void draw();
+
+    FrameData& currentFrame();
 };
