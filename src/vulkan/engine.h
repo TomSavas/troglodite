@@ -50,7 +50,16 @@ struct VulkanPipelineBuilder {
     VkPipeline build(VkDevice device, VkRenderPass pass);
 };
 
+struct GPUCameraData {
+    glm::mat4 view;
+    glm::mat4 projection;
+    glm::mat4 viewProjection;
+};
+
 struct FrameData {
+    AllocatedBuffer cameraUBO;
+    VkDescriptorSet globalDescriptor;
+
     VkSemaphore presentSem;
     VkSemaphore renderSem;
     VkFence renderFence;
@@ -102,6 +111,10 @@ struct VulkanBackend {
 
     int frameNumber;
 
+    // TODO: should be stored along with the descriptor set
+    VkDescriptorSetLayout globalDescriptorSetLayout;
+    VkDescriptorPool descriptorPool;
+
     static VulkanBackend init(GLFWwindow* window);
     void deinit();
 
@@ -111,10 +124,14 @@ struct VulkanBackend {
     void initDefaultRenderpass();
     void initFramebuffers();
     void initSyncStructs();
+    void initDescriptors();
     void initPipelines();
 
     void loadMeshes();
     void uploadMesh(Mesh& mesh);
+    void uploadData(const void* data, size_t size, VmaAllocation allocation);
+
+    AllocatedBuffer createBuffer(size_t size, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage);
 
     void draw();
 

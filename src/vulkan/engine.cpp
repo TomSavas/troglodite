@@ -81,6 +81,7 @@ VkPipeline VulkanPipelineBuilder::build(VkDevice device, VkRenderPass pass) {
     backend.initDefaultRenderpass();
     backend.initFramebuffers();
     backend.initSyncStructs();
+    backend.initDescriptors();
     backend.initPipelines();
 
     backend.loadMeshes();
@@ -126,10 +127,31 @@ void VulkanBackend::uploadMesh(Mesh& mesh) {
         LOG_CALL(vmaDestroyBuffer(allocator, mesh.vertexBuffer.buffer, mesh.vertexBuffer.allocation));
     });
     
-    void* vertexData;
-    vmaMapMemory(allocator, mesh.vertexBuffer.allocation, &vertexData);
-    memcpy(vertexData, mesh.vertices.data(), mesh.vertices.size() * sizeof(Vertex));
-    vmaUnmapMemory(allocator, mesh.vertexBuffer.allocation);
+    uploadData((void*)mesh.vertices.data(), mesh.vertices.size() * sizeof(Vertex), mesh.vertexBuffer.allocation);
+}
+
+void VulkanBackend::uploadData(const void* data, size_t size, VmaAllocation allocation) {
+    void* dataOnGPU;
+    vmaMapMemory(allocator, allocation, &dataOnGPU);
+    memcpy(dataOnGPU, data, size);
+    vmaUnmapMemory(allocator, allocation);
+}
+
+AllocatedBuffer VulkanBackend::createBuffer(size_t size, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage) {
+    VkBufferCreateInfo bufferInfo = {};
+    bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    bufferInfo.pNext = nullptr;
+
+    bufferInfo.size = size;
+    bufferInfo.usage = usage;
+
+    VmaAllocationCreateInfo allocInfo = {};
+    allocInfo.usage = memoryUsage;
+
+    AllocatedBuffer buffer;
+    VK_CHECK(vmaCreateBuffer(allocator, &bufferInfo, &allocInfo, &buffer.buffer, &buffer.allocation, nullptr));
+
+    return buffer;
 }
 
 void VulkanBackend::deinit() {
@@ -250,9 +272,11 @@ void VulkanBackend::initCommandBuffers() {
     }
 
     deinitQueue.enqueue([=]() {
-        for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-            LOG_CALL(vkDestroyCommandPool(device, inFlightFrames[i].cmdPool, nullptr));
-        }
+        LOG_CALL(
+            for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+                vkDestroyCommandPool(device, inFlightFrames[i].cmdPool, nullptr);
+            }
+        );
     });
 }
 
@@ -461,7 +485,7 @@ void VulkanBackend::draw() {
     rpInfo.pClearValues = clearValues;
 
     vkCmdBeginRenderPass(cmd, &rpInfo, VK_SUBPASS_CONTENTS_INLINE);
-    scene.draw(cmd);
+    scene.draw(*this, cmd, currentFrame());
     vkCmdEndRenderPass(cmd);
     //finalize the command buffer (we can no longer add commands, but it can now be executed)
     VK_CHECK(vkEndCommandBuffer(cmd));
@@ -511,8 +535,88 @@ void VulkanBackend::draw() {
     printf("frame: %d\n", frameNumber);
 }
 
+void VulkanBackend::initDescriptors() {
+    VkDescriptorPoolSize descriptorPoolSizes[] = {
+        { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 10 },
+    };
+
+    VkDescriptorPoolCreateInfo poolInfo = {};
+    poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    poolInfo.flags = 0;
+    poolInfo.maxSets = 10;
+    poolInfo.poolSizeCount = sizeof(descriptorPoolSizes) / sizeof(VkDescriptorPoolSize);
+    poolInfo.pPoolSizes = descriptorPoolSizes;
+
+    vkCreateDescriptorPool(device, &poolInfo, nullptr, &descriptorPool);
+    deinitQueue.enqueue([=]() {
+        LOG_CALL(vkDestroyDescriptorPool(device, descriptorPool, nullptr));
+    });
+
+    VkDescriptorSetLayoutBinding cameraBufferBinding = {}; 
+    cameraBufferBinding.binding = 0;
+    cameraBufferBinding.descriptorCount = 1;
+    cameraBufferBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    cameraBufferBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+
+    VkDescriptorSetLayoutCreateInfo setLayoutInfo = {};
+    setLayoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    setLayoutInfo.pNext = nullptr;
+
+    setLayoutInfo.bindingCount = 1;
+    setLayoutInfo.flags = 0;
+    setLayoutInfo.pBindings = &cameraBufferBinding;
+
+    vkCreateDescriptorSetLayout(device, &setLayoutInfo, nullptr, &globalDescriptorSetLayout);
+    deinitQueue.enqueue([=]() {
+        LOG_CALL(vkDestroyDescriptorSetLayout(device, globalDescriptorSetLayout, nullptr));
+    });
+
+    for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+        // Create buffer 
+        inFlightFrames[i].cameraUBO = createBuffer(sizeof(GPUCameraData), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+
+        // Allocate descriptor set from the pool
+        VkDescriptorSetAllocateInfo setAllocInfo = {};
+        setAllocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+        setAllocInfo.pNext = nullptr;
+        setAllocInfo.descriptorPool = descriptorPool;
+        setAllocInfo.descriptorSetCount = 1;
+        setAllocInfo.pSetLayouts = &globalDescriptorSetLayout;
+
+        vkAllocateDescriptorSets(device, &setAllocInfo, &inFlightFrames[i].globalDescriptor);
+
+        // Point the created descriptor set to the buffer
+        VkDescriptorBufferInfo bufferInfo = {};
+        bufferInfo.buffer = inFlightFrames[i].cameraUBO.buffer;
+        bufferInfo.offset = 0;
+        bufferInfo.range = sizeof(GPUCameraData);
+
+        VkWriteDescriptorSet setWrite = {};
+        setWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        setWrite.pNext = nullptr;
+
+        setWrite.dstBinding = 0;
+        setWrite.dstSet = inFlightFrames[i].globalDescriptor;
+        setWrite.descriptorCount = 1;
+        setWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        setWrite.pBufferInfo = &bufferInfo;
+
+        vkUpdateDescriptorSets(device, 1, &setWrite, 0, nullptr);
+    }
+
+    deinitQueue.enqueue([=]() {
+        LOG_CALL(
+            for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+                vmaDestroyBuffer(allocator, inFlightFrames[i].cameraUBO.buffer, inFlightFrames[i].cameraUBO.allocation); 
+            }
+        );
+    });
+}
+
 void VulkanBackend::initPipelines() {
     VkPipelineLayoutCreateInfo layoutInfo = layoutCreateInfo();
+
+    // TODO: specialization constants for compiling shaders
     
     VkPushConstantRange pushConstant;
     pushConstant.offset = 0;
@@ -521,6 +625,9 @@ void VulkanBackend::initPipelines() {
 
     layoutInfo.pPushConstantRanges = &pushConstant;
     layoutInfo.pushConstantRangeCount = 1;
+
+    layoutInfo.setLayoutCount = 1;
+    layoutInfo.pSetLayouts = &globalDescriptorSetLayout;
 
     VK_CHECK(vkCreatePipelineLayout(device, &layoutInfo, nullptr, &pipelineLayout));
     deinitQueue.enqueue([=]() {

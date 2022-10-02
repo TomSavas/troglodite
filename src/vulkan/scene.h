@@ -17,6 +17,8 @@ struct Camera {
     float farClippingPlaneDist;
 };
 
+struct VulkanBackend;
+struct FrameData;
 struct Scene {
     Camera mainCamera;
 
@@ -28,5 +30,5 @@ struct Scene {
     Material* createMaterial(VkPipeline pipeline, VkPipelineLayout layout, const std::string& name);
 
     void initTestScene();
-    void draw(VkCommandBuffer cmd);
+    void draw(VulkanBackend& backend, VkCommandBuffer cmd, FrameData& frameData);
 };

@@ -2,6 +2,7 @@
 #include <glm/gtx/transform.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
+#include "engine.h"
 #include "mesh.h"
 #include "scene.h"
 
@@ -33,7 +34,7 @@ void Scene::initTestScene() {
     }
 }
 
-void Scene::draw(VkCommandBuffer cmd) {
+void Scene::draw(VulkanBackend& backend, VkCommandBuffer cmd, FrameData& frameData) {
     if (renderables.size() == 0) {
         return;
     }
@@ -41,6 +42,13 @@ void Scene::draw(VkCommandBuffer cmd) {
     glm::mat4 view = glm::translate(glm::mat4(1.f), mainCamera.pos);
     glm::mat4 projection = glm::perspective(glm::radians(70.f), 1700.f / 900.f, 0.1f, 200.f);
     projection[1][1] *= -1; 
+
+    GPUCameraData cameraData;
+    cameraData.view = view;
+    cameraData.projection = projection;
+    cameraData.viewProjection = projection * view;
+
+    backend.uploadData((void*)&cameraData, sizeof(GPUCameraData), frameData.cameraUBO.allocation);
 
     Mesh* lastMesh = nullptr;
     Material* lastMaterial = nullptr;
@@ -52,10 +60,12 @@ void Scene::draw(VkCommandBuffer cmd) {
         if (renderable.material != lastMaterial) {
             vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, renderable.material->pipeline);
             lastMaterial = renderable.material;
+            vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, renderable.material->pipelineLayout,
+                0, 1, &frameData.globalDescriptor, 0, nullptr);
         }
 
         MeshPushConstants constants;
-        constants.MVP = projection * view * renderable.modelMatrix;
+        constants.MVP = renderable.modelMatrix;
         vkCmdPushConstants(cmd, renderable.material->pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(MeshPushConstants), &constants);
 
         if (renderable.mesh != lastMesh) {
