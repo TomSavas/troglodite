@@ -127,31 +127,17 @@ void VulkanBackend::uploadMesh(Mesh& mesh) {
         LOG_CALL(vmaDestroyBuffer(allocator, mesh.vertexBuffer.buffer, mesh.vertexBuffer.allocation));
     });
     
-    uploadData((void*)mesh.vertices.data(), mesh.vertices.size() * sizeof(Vertex), mesh.vertexBuffer.allocation);
+    uploadData((void*)mesh.vertices.data(), mesh.vertices.size() * sizeof(Vertex), 0, mesh.vertexBuffer.allocation);
 }
 
-void VulkanBackend::uploadData(const void* data, size_t size, VmaAllocation allocation) {
-    void* dataOnGPU;
-    vmaMapMemory(allocator, allocation, &dataOnGPU);
+void VulkanBackend::uploadData(const void* data, size_t size, size_t offset, VmaAllocation allocation) {
+    char* dataOnGPU;
+    vmaMapMemory(allocator, allocation, (void**) &dataOnGPU);
+
+    dataOnGPU += offset;
+
     memcpy(dataOnGPU, data, size);
     vmaUnmapMemory(allocator, allocation);
-}
-
-AllocatedBuffer VulkanBackend::createBuffer(size_t size, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage) {
-    VkBufferCreateInfo bufferInfo = {};
-    bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    bufferInfo.pNext = nullptr;
-
-    bufferInfo.size = size;
-    bufferInfo.usage = usage;
-
-    VmaAllocationCreateInfo allocInfo = {};
-    allocInfo.usage = memoryUsage;
-
-    AllocatedBuffer buffer;
-    VK_CHECK(vmaCreateBuffer(allocator, &bufferInfo, &allocInfo, &buffer.buffer, &buffer.allocation, nullptr));
-
-    return buffer;
 }
 
 void VulkanBackend::deinit() {
@@ -188,9 +174,16 @@ void VulkanBackend::initVulkan(GLFWwindow* window) {
         .select()
         .value();
     vkb::DeviceBuilder deviceBuilder { physicalDevice };
+    VkPhysicalDeviceShaderDrawParametersFeatures shaderDrawParametersFeatures = {};
+    shaderDrawParametersFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_DRAW_PARAMETERS_FEATURES;
+    shaderDrawParametersFeatures.pNext = nullptr;
+    shaderDrawParametersFeatures.shaderDrawParameters = VK_TRUE;
+    deviceBuilder.add_pNext(&shaderDrawParametersFeatures);
     vkb::Device vkbDevice = deviceBuilder.build().value();
     gpu = physicalDevice.physical_device;
     device = vkbDevice.device;
+
+    gpuProperties = vkbDevice.physical_device.properties;
 
     graphicsQueue = vkbDevice.get_queue(vkb::QueueType::graphics).value();
     graphicsQueueFamily = vkbDevice.get_queue_index(vkb::QueueType::graphics).value();
@@ -538,12 +531,14 @@ void VulkanBackend::draw() {
 void VulkanBackend::initDescriptors() {
     VkDescriptorPoolSize descriptorPoolSizes[] = {
         { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 10 },
+        { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 10 },
+        { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 10 },
     };
 
     VkDescriptorPoolCreateInfo poolInfo = {};
     poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
     poolInfo.flags = 0;
-    poolInfo.maxSets = 10;
+    poolInfo.maxSets = 30;
     poolInfo.poolSizeCount = sizeof(descriptorPoolSizes) / sizeof(VkDescriptorPoolSize);
     poolInfo.pPoolSizes = descriptorPoolSizes;
 
@@ -552,23 +547,37 @@ void VulkanBackend::initDescriptors() {
         LOG_CALL(vkDestroyDescriptorPool(device, descriptorPool, nullptr));
     });
 
-    VkDescriptorSetLayoutBinding cameraBufferBinding = {}; 
-    cameraBufferBinding.binding = 0;
-    cameraBufferBinding.descriptorCount = 1;
-    cameraBufferBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    cameraBufferBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+    const size_t sceneParamsBuffersSize = MAX_FRAMES_IN_FLIGHT * padUniformBufferSize(sizeof(GPUSceneData));
+    sceneParamsBuffers = createBuffer(sceneParamsBuffersSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+
+    VkDescriptorSetLayoutBinding cameraBufferBinding = descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_VERTEX_BIT, 0);
+    VkDescriptorSetLayoutBinding sceneParamsBinding = descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 1);
+
+    VkDescriptorSetLayoutBinding setBindings[] = { cameraBufferBinding, sceneParamsBinding };
 
     VkDescriptorSetLayoutCreateInfo setLayoutInfo = {};
     setLayoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
     setLayoutInfo.pNext = nullptr;
-
-    setLayoutInfo.bindingCount = 1;
+    setLayoutInfo.bindingCount = 2;
     setLayoutInfo.flags = 0;
-    setLayoutInfo.pBindings = &cameraBufferBinding;
+    setLayoutInfo.pBindings = setBindings;
 
     vkCreateDescriptorSetLayout(device, &setLayoutInfo, nullptr, &globalDescriptorSetLayout);
     deinitQueue.enqueue([=]() {
         LOG_CALL(vkDestroyDescriptorSetLayout(device, globalDescriptorSetLayout, nullptr));
+    });
+
+    VkDescriptorSetLayoutBinding objectDataBufferBinding = descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_VERTEX_BIT, 0);
+    VkDescriptorSetLayoutCreateInfo set2LayoutInfo = {};
+    set2LayoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    set2LayoutInfo.pNext = nullptr;
+    set2LayoutInfo.bindingCount = 1;
+    set2LayoutInfo.flags = 0;
+    set2LayoutInfo.pBindings = &objectDataBufferBinding;
+
+    vkCreateDescriptorSetLayout(device, &set2LayoutInfo, nullptr, &objectDescriptorSetLayout);
+    deinitQueue.enqueue([=]() {
+        LOG_CALL(vkDestroyDescriptorSetLayout(device, objectDescriptorSetLayout, nullptr));
     });
 
     for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
@@ -585,30 +594,51 @@ void VulkanBackend::initDescriptors() {
 
         vkAllocateDescriptorSets(device, &setAllocInfo, &inFlightFrames[i].globalDescriptor);
 
+        const int MAX_OBJECTS = 10000;
+        inFlightFrames[i].objectDataBuffer = createBuffer(sizeof(GPUObjectData) * MAX_OBJECTS, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+
+        VkDescriptorSetAllocateInfo set2AllocInfo = {};
+        set2AllocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+        set2AllocInfo.pNext = nullptr;
+        set2AllocInfo.descriptorPool = descriptorPool;
+        set2AllocInfo.descriptorSetCount = 1;
+        set2AllocInfo.pSetLayouts = &objectDescriptorSetLayout;
+
+        vkAllocateDescriptorSets(device, &set2AllocInfo, &inFlightFrames[i].objectDescriptor);
+
         // Point the created descriptor set to the buffer
-        VkDescriptorBufferInfo bufferInfo = {};
-        bufferInfo.buffer = inFlightFrames[i].cameraUBO.buffer;
-        bufferInfo.offset = 0;
-        bufferInfo.range = sizeof(GPUCameraData);
+        VkDescriptorBufferInfo cameraDescriptorInfo = {};
+        cameraDescriptorInfo.buffer = inFlightFrames[i].cameraUBO.buffer;
+        cameraDescriptorInfo.offset = 0;
+        cameraDescriptorInfo.range = sizeof(GPUCameraData);
+        
+        VkDescriptorBufferInfo sceneDescriptorInfo = {};
+        sceneDescriptorInfo.buffer = sceneParamsBuffers.buffer;
+        //sceneDescriptorInfo.offset = padUniformBufferSize(sizeof(GPUSceneData)) * i; // Not needed for dynamic descriptors...
+        sceneDescriptorInfo.offset = 0;
+        sceneDescriptorInfo.range = sizeof(GPUSceneData);
 
-        VkWriteDescriptorSet setWrite = {};
-        setWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        setWrite.pNext = nullptr;
+        VkDescriptorBufferInfo objectDescriptorInfo = {};
+        objectDescriptorInfo.buffer = inFlightFrames[i].objectDataBuffer.buffer;
+        objectDescriptorInfo.offset = 0;
+        objectDescriptorInfo.range = sizeof(GPUObjectData) * MAX_OBJECTS;
 
-        setWrite.dstBinding = 0;
-        setWrite.dstSet = inFlightFrames[i].globalDescriptor;
-        setWrite.descriptorCount = 1;
-        setWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        setWrite.pBufferInfo = &bufferInfo;
+        VkWriteDescriptorSet cameraSetWrite = writeDescriptorBuffer(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, inFlightFrames[i].globalDescriptor, &cameraDescriptorInfo, 0);
+        VkWriteDescriptorSet sceneSetWrite = writeDescriptorBuffer(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, inFlightFrames[i].globalDescriptor, &sceneDescriptorInfo, 1);
+        VkWriteDescriptorSet objectSetWrite = writeDescriptorBuffer(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, inFlightFrames[i].objectDescriptor, &objectDescriptorInfo, 0); // different set
 
-        vkUpdateDescriptorSets(device, 1, &setWrite, 0, nullptr);
+        VkWriteDescriptorSet setWrites[] = { cameraSetWrite, sceneSetWrite, objectSetWrite };
+
+        vkUpdateDescriptorSets(device, 3, setWrites, 0, nullptr);
     }
 
     deinitQueue.enqueue([=]() {
         LOG_CALL(
             for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+                vmaDestroyBuffer(allocator, inFlightFrames[i].objectDataBuffer.buffer, inFlightFrames[i].objectDataBuffer.allocation); 
                 vmaDestroyBuffer(allocator, inFlightFrames[i].cameraUBO.buffer, inFlightFrames[i].cameraUBO.allocation); 
             }
+            vmaDestroyBuffer(allocator, sceneParamsBuffers.buffer, sceneParamsBuffers.allocation); 
         );
     });
 }
@@ -626,8 +656,9 @@ void VulkanBackend::initPipelines() {
     layoutInfo.pPushConstantRanges = &pushConstant;
     layoutInfo.pushConstantRangeCount = 1;
 
-    layoutInfo.setLayoutCount = 1;
-    layoutInfo.pSetLayouts = &globalDescriptorSetLayout;
+    VkDescriptorSetLayout setLayouts[] = { globalDescriptorSetLayout, objectDescriptorSetLayout };
+    layoutInfo.setLayoutCount = 2;
+    layoutInfo.pSetLayouts = setLayouts;
 
     VK_CHECK(vkCreatePipelineLayout(device, &layoutInfo, nullptr, &pipelineLayout));
     deinitQueue.enqueue([=]() {
@@ -693,4 +724,31 @@ void VulkanBackend::initPipelines() {
 
 FrameData& VulkanBackend::currentFrame() {
     return inFlightFrames[frameNumber % MAX_FRAMES_IN_FLIGHT];
+}
+
+AllocatedBuffer VulkanBackend::createBuffer(size_t size, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage) {
+    VkBufferCreateInfo bufferInfo = {};
+    bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    bufferInfo.pNext = nullptr;
+
+    bufferInfo.size = size;
+    bufferInfo.usage = usage;
+
+    VmaAllocationCreateInfo allocInfo = {};
+    allocInfo.usage = memoryUsage;
+
+    AllocatedBuffer buffer;
+    VK_CHECK(vmaCreateBuffer(allocator, &bufferInfo, &allocInfo, &buffer.buffer, &buffer.allocation, nullptr));
+
+    return buffer;
+}
+
+size_t VulkanBackend::padUniformBufferSize(size_t requestedSize) {
+    size_t minUboAlignment = gpuProperties.limits.minUniformBufferOffsetAlignment;
+    size_t size = requestedSize;
+    if (minUboAlignment > 0) {
+        size = (size + minUboAlignment - 1) & ~(minUboAlignment - 1);
+    }
+
+    return size;
 }

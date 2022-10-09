@@ -56,9 +56,24 @@ struct GPUCameraData {
     glm::mat4 viewProjection;
 };
 
+struct GPUSceneData {
+    glm::vec4 fogColor; // w exponent
+    glm::vec4 fogDistances; // x for min, y for max, zw unused
+    glm::vec4 ambientColor;
+    glm::vec4 sunlightDirection; // w for sun power
+    glm::vec4 sunlightColor;
+};
+
+struct GPUObjectData {
+    glm::mat4 modelMatrix;
+};
+
 struct FrameData {
     AllocatedBuffer cameraUBO;
     VkDescriptorSet globalDescriptor;
+
+    AllocatedBuffer objectDataBuffer;
+    VkDescriptorSet objectDescriptor;
 
     VkSemaphore presentSem;
     VkSemaphore renderSem;
@@ -72,6 +87,9 @@ struct VulkanBackend {
     static constexpr int MAX_FRAMES_IN_FLIGHT = 2;
     FrameData inFlightFrames[MAX_FRAMES_IN_FLIGHT];
 
+    GPUSceneData sceneParams;
+    AllocatedBuffer sceneParamsBuffers;
+
     FunctionQueue deinitQueue;
 
     Scene scene;
@@ -82,6 +100,7 @@ struct VulkanBackend {
     VkPhysicalDevice gpu;
     VkDevice device;
     VkSurfaceKHR surface;
+    VkPhysicalDeviceProperties gpuProperties;
 
     VkSwapchainKHR swapchain; // from other articles
     // image format expected by the windowing system
@@ -113,6 +132,7 @@ struct VulkanBackend {
 
     // TODO: should be stored along with the descriptor set
     VkDescriptorSetLayout globalDescriptorSetLayout;
+    VkDescriptorSetLayout objectDescriptorSetLayout;
     VkDescriptorPool descriptorPool;
 
     static VulkanBackend init(GLFWwindow* window);
@@ -129,11 +149,12 @@ struct VulkanBackend {
 
     void loadMeshes();
     void uploadMesh(Mesh& mesh);
-    void uploadData(const void* data, size_t size, VmaAllocation allocation);
-
-    AllocatedBuffer createBuffer(size_t size, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage);
+    void uploadData(const void* data, size_t size, size_t offset, VmaAllocation allocation);
 
     void draw();
 
     FrameData& currentFrame();
+
+    AllocatedBuffer createBuffer(size_t size, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage);
+    size_t padUniformBufferSize(size_t requestedSize);
 };

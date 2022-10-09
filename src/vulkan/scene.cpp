@@ -21,7 +21,6 @@ void Scene::initTestScene() {
 
     for (int x = -20; x <= 20; x++) {
         for (int y = -20; y <= 20; y++) {
-
             RenderObject tri;
             tri.mesh = &meshes["triangle"];
             tri.material = &materials["defaultMaterial"];
@@ -48,11 +47,27 @@ void Scene::draw(VulkanBackend& backend, VkCommandBuffer cmd, FrameData& frameDa
     cameraData.projection = projection;
     cameraData.viewProjection = projection * view;
 
-    backend.uploadData((void*)&cameraData, sizeof(GPUCameraData), frameData.cameraUBO.allocation);
+    backend.uploadData((void*)&cameraData, sizeof(GPUCameraData), 0, frameData.cameraUBO.allocation);
+
+    backend.sceneParams.ambientColor = glm::vec4(1.f, 0.f, 0.f, 1.f);
+    uint32_t sceneParamsUniformOffset = backend.padUniformBufferSize(sizeof(GPUSceneData)) * (backend.frameNumber % VulkanBackend::MAX_FRAMES_IN_FLIGHT);
+    backend.uploadData((void*)&backend.sceneParams, sizeof(GPUSceneData), sceneParamsUniformOffset, backend.sceneParamsBuffers.allocation);
+
+    // TODO: redo renderables into a SoA so that we can just upload the matrix array here.
+    {
+        void* gpuData;
+        vmaMapMemory(backend.allocator, frameData.objectDataBuffer.allocation, &gpuData);
+        GPUObjectData* gpuObjectData = (GPUObjectData*)gpuData;
+        for (int i = 0; i < renderables.size(); i++) {
+            gpuObjectData[i].modelMatrix = renderables[i].modelMatrix;
+        }
+        vmaUnmapMemory(backend.allocator, frameData.objectDataBuffer.allocation);
+    }
 
     Mesh* lastMesh = nullptr;
     Material* lastMaterial = nullptr;
-    for (auto& renderable : renderables) {
+    for (int i = 0; i < renderables.size(); i++) {
+        RenderObject& renderable = renderables[i];
         if (renderable.material == nullptr || renderable.mesh == nullptr) {
             continue;
         }
@@ -61,7 +76,10 @@ void Scene::draw(VulkanBackend& backend, VkCommandBuffer cmd, FrameData& frameDa
             vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, renderable.material->pipeline);
             lastMaterial = renderable.material;
             vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, renderable.material->pipelineLayout,
-                0, 1, &frameData.globalDescriptor, 0, nullptr);
+                0, 1, &frameData.globalDescriptor, 1, &sceneParamsUniformOffset);
+
+            vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, renderable.material->pipelineLayout,
+                1, 1, &frameData.objectDescriptor, 0, nullptr);
         }
 
         MeshPushConstants constants;
@@ -74,6 +92,6 @@ void Scene::draw(VulkanBackend& backend, VkCommandBuffer cmd, FrameData& frameDa
             lastMesh = renderable.mesh;
         }
 
-        vkCmdDraw(cmd, renderable.mesh->vertices.size(), 1, 0, 0);
+        vkCmdDraw(cmd, renderable.mesh->vertices.size(), 1, 0, i);
     }
 }
