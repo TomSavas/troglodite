@@ -15,6 +15,7 @@ add_executable(${EXEC} ${SOURCES})
 target_include_directories(${PROJECT} PRIVATE src/)
 target_include_directories(${PROJECT} PRIVATE lib/tinygltf)
 target_include_directories(${PROJECT} PRIVATE lib/tinyobjloader)
+target_include_directories(${PROJECT} PRIVATE lib/stb_image)
 
 set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
 set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
