@@ -15,7 +15,6 @@
 #include "vulkan/mesh.h"
 #include "vulkan/scene.h"
 #include "vulkan/types.h"
-#include "vulkan/vk_init_helpers.h"
 
 #define VK_CHECK(x)                                                \
     do                                                             \
@@ -27,6 +26,12 @@
         raise(SIGTERM);                                            \
     }                                                              \
 } while (0)
+
+struct UploadContext {
+    VkFence uploadFence;
+    VkCommandPool cmdPool;
+    VkCommandBuffer cmdBuffer;
+};
 
 struct FunctionQueue {
     std::deque<std::function<void()>> functions;
@@ -94,6 +99,8 @@ struct VulkanBackend {
 
     Scene scene;
 
+    UploadContext uploadCtx;
+
     vkb::Instance vkbInstance;
     VkInstance instance;
     VkDebugUtilsMessengerEXT debugMessenger;
@@ -133,6 +140,7 @@ struct VulkanBackend {
     // TODO: should be stored along with the descriptor set
     VkDescriptorSetLayout globalDescriptorSetLayout;
     VkDescriptorSetLayout objectDescriptorSetLayout;
+    VkDescriptorSetLayout singleTextureDescriptorSetLayout;
     VkDescriptorPool descriptorPool;
 
     static VulkanBackend init(GLFWwindow* window);
@@ -148,10 +156,14 @@ struct VulkanBackend {
     void initPipelines();
 
     void loadMeshes();
+    void loadTextures();
+
     void uploadMesh(Mesh& mesh);
     void uploadData(const void* data, size_t size, size_t offset, VmaAllocation allocation);
 
     void draw();
+
+    void immediateBlockingSubmit(std::function<void(VkCommandBuffer)>&& func);
 
     FrameData& currentFrame();
 

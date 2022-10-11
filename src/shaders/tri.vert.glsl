@@ -3,8 +3,10 @@
 layout (location = 0) in vec3 position;
 layout (location = 1) in vec3 normal;
 layout (location = 2) in vec3 color;
+layout (location = 3) in vec2 uv;
 
 layout (location = 0) out vec3 outColor;
+layout (location = 1) out vec2 outUv;
 
 layout (set = 0, binding = 0) uniform CameraBuffer {
     mat4 view;
@@ -31,4 +33,5 @@ void main()
     mat4 mvp = cameraData.viewProjection * objectBuffer.data[gl_BaseInstance].modelMatrix;
     gl_Position = mvp * vec4(position, 1.0f);
     outColor = color;
+    outUv = uv;
 }

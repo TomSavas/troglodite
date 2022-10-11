@@ -17,3 +17,11 @@ VkPipelineDepthStencilStateCreateInfo depthStencilCreateInfo(bool depthTest, boo
 
 VkDescriptorSetLayoutBinding descriptorSetLayoutBinding(VkDescriptorType type, VkShaderStageFlags stageFlags, uint32_t binding);
 VkWriteDescriptorSet writeDescriptorBuffer(VkDescriptorType type, VkDescriptorSet dstSet, VkDescriptorBufferInfo* bufferInfo, uint32_t binding);
+
+VkBufferCreateInfo bufferCreateInfo(size_t size, VkBufferUsageFlags flags);
+
+VkCommandBufferBeginInfo commandBufferBeginInfo(VkCommandBufferUsageFlags flags);
+VkSubmitInfo submitInfo(VkCommandBuffer* cmd);
+
+VkSamplerCreateInfo samplerCreateInfo(VkFilter filters, VkSamplerAddressMode samplerAddressMode = VK_SAMPLER_ADDRESS_MODE_REPEAT);
+VkWriteDescriptorSet writeDescriptorImage(VkDescriptorType type, VkDescriptorSet dstSet, VkDescriptorImageInfo* imageInfo, uint32_t binding);

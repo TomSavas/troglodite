@@ -1,8 +1,11 @@
 #pragma once
 
+#include <vulkan/vulkan.h>
 #include <vk_mem_alloc.h>
+#include <glm/glm.hpp>
 
 struct Material {
+    VkDescriptorSet textureSet {VK_NULL_HANDLE};
     VkPipeline pipeline;
     VkPipelineLayout pipelineLayout;
 };

@@ -7,15 +7,16 @@
 #include "scene.h"
 
 Material* Scene::createMaterial(VkPipeline pipeline, VkPipelineLayout layout, const std::string& name) {
-    materials[name] = Material { pipeline, layout };
+    materials[name] = Material { VK_NULL_HANDLE, pipeline, layout };
     return &materials[name];
 }
 
 void Scene::initTestScene() {
     RenderObject suzanne;
-    suzanne.mesh = &meshes["suzanne"];
+    //suzanne.mesh = &meshes["suzanne"];
+    suzanne.mesh = &meshes["lostEmpire"];
     suzanne.material = &materials["defaultMaterial"];
-    suzanne.modelMatrix = glm::mat4{ 1.0f };
+    suzanne.modelMatrix = glm::translate(glm::vec3(5.f, -10.f, 0.f));
 
     renderables.push_back(suzanne);
 
@@ -49,7 +50,7 @@ void Scene::draw(VulkanBackend& backend, VkCommandBuffer cmd, FrameData& frameDa
 
     backend.uploadData((void*)&cameraData, sizeof(GPUCameraData), 0, frameData.cameraUBO.allocation);
 
-    backend.sceneParams.ambientColor = glm::vec4(1.f, 0.f, 0.f, 1.f);
+    backend.sceneParams.ambientColor = glm::vec4(0.f, 0.f, 0.f, 1.f);
     uint32_t sceneParamsUniformOffset = backend.padUniformBufferSize(sizeof(GPUSceneData)) * (backend.frameNumber % VulkanBackend::MAX_FRAMES_IN_FLIGHT);
     backend.uploadData((void*)&backend.sceneParams, sizeof(GPUSceneData), sceneParamsUniformOffset, backend.sceneParamsBuffers.allocation);
 
@@ -80,6 +81,11 @@ void Scene::draw(VulkanBackend& backend, VkCommandBuffer cmd, FrameData& frameDa
 
             vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, renderable.material->pipelineLayout,
                 1, 1, &frameData.objectDescriptor, 0, nullptr);
+
+            if (renderable.material->textureSet != VK_NULL_HANDLE) {
+                vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, renderable.material->pipelineLayout,
+                    2, 1, &renderable.material->textureSet, 0, nullptr);
+            }
         }
 
         MeshPushConstants constants;

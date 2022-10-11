@@ -5,6 +5,7 @@
 #include <unordered_map>
 
 #include "types.h"
+#include "texture.h"
 
 struct Camera {
     glm::vec3 pos;
@@ -26,6 +27,7 @@ struct Scene {
 
     std::unordered_map<std::string, Material> materials;
     std::unordered_map<std::string, Mesh> meshes;
+    std::unordered_map<std::string, Texture> textures;
 
     Material* createMaterial(VkPipeline pipeline, VkPipelineLayout layout, const std::string& name);
 

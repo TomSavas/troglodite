@@ -180,3 +180,71 @@ VkWriteDescriptorSet writeDescriptorBuffer(VkDescriptorType type, VkDescriptorSe
     return writeSet;
 }
 
+VkBufferCreateInfo bufferCreateInfo(size_t size, VkBufferUsageFlags usage) {
+    VkBufferCreateInfo info = {};
+    info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    info.pNext = nullptr;
+    info.size = size;
+    info.usage = usage;
+
+    return info;
+}
+
+VkCommandBufferBeginInfo commandBufferBeginInfo(VkCommandBufferUsageFlags flags = 0) {
+    VkCommandBufferBeginInfo cmdBeginInfo = {};
+    cmdBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    cmdBeginInfo.pNext = nullptr;
+
+    cmdBeginInfo.pInheritanceInfo = nullptr;
+    cmdBeginInfo.flags = flags;
+
+    return cmdBeginInfo;
+}
+
+VkSubmitInfo submitInfo(VkCommandBuffer* cmd) {
+    VkSubmitInfo submitInfo = {};
+    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submitInfo.pNext = nullptr;
+
+    VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    submitInfo.pWaitDstStageMask = nullptr;
+
+    submitInfo.waitSemaphoreCount = 0;
+    submitInfo.pWaitSemaphores = nullptr;
+
+    submitInfo.signalSemaphoreCount = 0;
+    submitInfo.pSignalSemaphores = nullptr;
+
+    submitInfo.commandBufferCount = 1;
+    submitInfo.pCommandBuffers = cmd;
+    
+    return submitInfo;
+}
+
+VkSamplerCreateInfo samplerCreateInfo(VkFilter filters, VkSamplerAddressMode samplerAddressMode) {
+    VkSamplerCreateInfo info = {};
+    info.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+    info.pNext = nullptr;
+
+    info.magFilter = filters;
+    info.minFilter = filters;
+    info.addressModeU = samplerAddressMode;
+    info.addressModeV = samplerAddressMode;
+    info.addressModeW = samplerAddressMode;
+
+    return info;
+}
+
+VkWriteDescriptorSet writeDescriptorImage(VkDescriptorType type, VkDescriptorSet dstSet, VkDescriptorImageInfo* imageInfo, uint32_t binding) {
+    VkWriteDescriptorSet writeSet = {};
+    writeSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    writeSet.pNext = nullptr;
+
+    writeSet.dstBinding = binding;
+    writeSet.dstSet = dstSet;
+    writeSet.descriptorCount = 1;
+    writeSet.descriptorType = type;
+    writeSet.pImageInfo = imageInfo;
+
+    return writeSet;
+}

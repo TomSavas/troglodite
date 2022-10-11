@@ -1,8 +1,7 @@
-//glsl version 4.5
-#version 450
+#version 460
 
-//output write
 layout (location = 0) in vec3 inColor;
+layout (location = 1) in vec2 inUv;
 
 layout (location = 0) out vec4 outFragColor;
 
@@ -14,8 +13,11 @@ layout (set = 0, binding = 1) uniform SceneParams {
     vec4 sunlightColor;
 } sceneParams;
 
+layout (set = 2, binding = 0) uniform sampler2D tex;
+
 void main()
 {
-    outFragColor = vec4(inColor + sceneParams.ambientColor.rgb, 1.0f);
+    vec3 color = texture(tex, inUv).rgb;
+    outFragColor = vec4(color.rgb, 1.0f);
 }
 
