@@ -34,23 +34,8 @@ void FunctionQueue::execute() {
 }
 
 VkPipeline VulkanPipelineBuilder::build(VkDevice device, VkRenderPass pass) {
-    VkPipelineViewportStateCreateInfo viewportState = {};
-    viewportState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
-    viewportState.pNext = nullptr;
-
-    viewportState.viewportCount = 1;
-    viewportState.pViewports = &viewport;
-    viewportState.scissorCount = 1;
-    viewportState.pScissors = &scissor;
-
-    VkPipelineColorBlendStateCreateInfo colorBlending = {};
-    colorBlending.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
-    colorBlending.pNext = nullptr;
-
-    colorBlending.logicOpEnable = VK_FALSE;
-    colorBlending.logicOp = VK_LOGIC_OP_COPY;
-    colorBlending.attachmentCount = 1;
-    colorBlending.pAttachments = &colorBlendAttachment;
+    VkPipelineViewportStateCreateInfo viewportState = pipelineViewportState(1, &viewport, 1, &scissor);
+    VkPipelineColorBlendStateCreateInfo colorBlending = pipelineColorBlendState(false, VK_LOGIC_OP_COPY, 1, &colorBlendAttachment);
 
     VkGraphicsPipelineCreateInfo pipelineInfo = {};
     pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
@@ -138,12 +123,7 @@ void VulkanBackend::loadTextures() {
     VkSampler nearestSampler;
     vkCreateSampler(device, &samplerInfo, nullptr, &nearestSampler);
 
-    VkDescriptorSetAllocateInfo setAllocInfo = {};
-    setAllocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-    setAllocInfo.pNext = nullptr;
-    setAllocInfo.descriptorPool = descriptorPool;
-    setAllocInfo.descriptorSetCount = 1;
-    setAllocInfo.pSetLayouts = &singleTextureDescriptorSetLayout;
+    VkDescriptorSetAllocateInfo setAllocInfo = descriptorSetAllocate(descriptorPool, 1, &singleTextureDescriptorSetLayout);
 
     Material* mat = &scene.materials["defaultMaterial"];
     vkAllocateDescriptorSets(device, &setAllocInfo, &mat->textureSet);
@@ -301,22 +281,8 @@ void VulkanBackend::initSwapchain() {
 }
 
 void VulkanBackend::initCommandBuffers() {
-    //create a command pool for commands submitted to the graphics queue.
-    VkCommandPoolCreateInfo commandPoolInfo = {};
-    commandPoolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-    commandPoolInfo.pNext = nullptr;
-
-    //the command pool will be one that can submit graphics commands
-    commandPoolInfo.queueFamilyIndex = graphicsQueueFamily;
-    //we also want the pool to allow for resetting of individual command buffers
-    commandPoolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-
-    VkCommandBufferAllocateInfo cmdAllocInfo = {};
-    cmdAllocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    cmdAllocInfo.pNext = nullptr;
-
-    cmdAllocInfo.commandBufferCount = 1;
-    cmdAllocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    VkCommandPoolCreateInfo commandPoolInfo = commandPoolCreateInfo(graphicsQueueFamily, VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
+    VkCommandBufferAllocateInfo cmdAllocInfo = commandBufferAllocateInfo(1, VK_COMMAND_BUFFER_LEVEL_PRIMARY, VK_NULL_HANDLE);
 
     for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
         VK_CHECK(vkCreateCommandPool(device, &commandPoolInfo, nullptr, &inFlightFrames[i].cmdPool));
@@ -332,22 +298,10 @@ void VulkanBackend::initCommandBuffers() {
         );
     });
 
-    VkCommandPoolCreateInfo uploadCmdPoolInfo = {};
-    uploadCmdPoolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-    uploadCmdPoolInfo.pNext = nullptr;
-
-    uploadCmdPoolInfo.queueFamilyIndex = graphicsQueueFamily;
-    uploadCmdPoolInfo.flags = 0;
+    VkCommandPoolCreateInfo uploadCmdPoolInfo = commandPoolCreateInfo(graphicsQueueFamily, 0);
     VK_CHECK(vkCreateCommandPool(device, &uploadCmdPoolInfo, nullptr, &uploadCtx.cmdPool));
 
-    VkCommandBufferAllocateInfo uploadCmdAllocInfo = {};
-    uploadCmdAllocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    uploadCmdAllocInfo.pNext = nullptr;
-
-    uploadCmdAllocInfo.commandBufferCount = 1;
-    uploadCmdAllocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-
-    uploadCmdAllocInfo.commandPool = uploadCtx.cmdPool;
+    VkCommandBufferAllocateInfo uploadCmdAllocInfo = commandBufferAllocateInfo(1, VK_COMMAND_BUFFER_LEVEL_PRIMARY, uploadCtx.cmdPool);
     VK_CHECK(vkAllocateCommandBuffers(device, &uploadCmdAllocInfo, &uploadCtx.cmdBuffer));
 
     deinitQueue.enqueue([=]() {
@@ -480,22 +434,15 @@ void VulkanBackend::initFramebuffers() {
 }
 
 void VulkanBackend::initSyncStructs() {
-    VkFenceCreateInfo fenceCreateInfo = {};
-    fenceCreateInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-    fenceCreateInfo.pNext = nullptr;
-    //we want to create the fence with the Create Signaled flag, so we can wait on it before using it on a GPU command (for the first frame)
-    fenceCreateInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
-
-    //for the semaphores we don't need any flags
-    VkSemaphoreCreateInfo semaphoreCreateInfo = {};
-    semaphoreCreateInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
-    semaphoreCreateInfo.pNext = nullptr;
-    semaphoreCreateInfo.flags = 0;
+    // We want to create the fence with the Create Signaled flag, so we can wait on it before using it on a GPU command (for the first frame)
+    VkFenceCreateInfo frameRenderFenceCreateInfo = fenceCreateInfo(VK_FENCE_CREATE_SIGNALED_BIT);
+    // For the semaphores we don't need any flags
+    VkSemaphoreCreateInfo frameSemCreateInfo = semaphoreCreateInfo(0);
 
     for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-        VK_CHECK(vkCreateFence(device, &fenceCreateInfo, nullptr, &inFlightFrames[i].renderFence));
-        VK_CHECK(vkCreateSemaphore(device, &semaphoreCreateInfo, nullptr, &inFlightFrames[i].presentSem));
-        VK_CHECK(vkCreateSemaphore(device, &semaphoreCreateInfo, nullptr, &inFlightFrames[i].renderSem));
+        VK_CHECK(vkCreateFence(device, &frameRenderFenceCreateInfo, nullptr, &inFlightFrames[i].renderFence));
+        VK_CHECK(vkCreateSemaphore(device, &frameSemCreateInfo, nullptr, &inFlightFrames[i].presentSem));
+        VK_CHECK(vkCreateSemaphore(device, &frameSemCreateInfo, nullptr, &inFlightFrames[i].renderSem));
     }
     deinitQueue.enqueue([=](){
         LOG_CALL(
@@ -507,11 +454,7 @@ void VulkanBackend::initSyncStructs() {
         );
     });
 
-    VkFenceCreateInfo uploadFenceCreateInfo = {};
-    uploadFenceCreateInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-    uploadFenceCreateInfo.pNext = nullptr;
-    uploadFenceCreateInfo.flags = 0;
-
+    VkFenceCreateInfo uploadFenceCreateInfo = fenceCreateInfo(0);
     VK_CHECK(vkCreateFence(device, &uploadFenceCreateInfo, nullptr, &uploadCtx.uploadFence));
     deinitQueue.enqueue([=](){
         LOG_CALL(vkDestroyFence(device, uploadCtx.uploadFence, nullptr));
@@ -630,14 +573,15 @@ void VulkanBackend::initDescriptors() {
         { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 10 },
     };
 
-    VkDescriptorPoolCreateInfo poolInfo = {};
-    poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-    poolInfo.flags = 0;
-    poolInfo.maxSets = 10;
-    poolInfo.poolSizeCount = sizeof(descriptorPoolSizes) / sizeof(VkDescriptorPoolSize);
-    poolInfo.pPoolSizes = descriptorPoolSizes;
+    VkDescriptorPoolCreateInfo poolCreateInfo = {};
+    poolCreateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    poolCreateInfo.pNext = nullptr;
+    poolCreateInfo.flags = 0;
+    poolCreateInfo.maxSets = 10;
+    poolCreateInfo.poolSizeCount = sizeof(descriptorPoolSizes) / sizeof(VkDescriptorPoolSize);
+    poolCreateInfo.pPoolSizes = descriptorPoolSizes;
 
-    vkCreateDescriptorPool(device, &poolInfo, nullptr, &descriptorPool);
+    vkCreateDescriptorPool(device, &poolCreateInfo, nullptr, &descriptorPool);
     deinitQueue.enqueue([=]() {
         LOG_CALL(vkDestroyDescriptorPool(device, descriptorPool, nullptr));
     });
@@ -848,15 +792,16 @@ void VulkanBackend::initImgui(GLFWwindow* window) {
         { VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 1000 }
     };
 
-    VkDescriptorPoolCreateInfo poolInfo = {};
-    poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-    poolInfo.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
-    poolInfo.maxSets = 1000;
-    poolInfo.poolSizeCount = std::size(poolSizes);
-    poolInfo.pPoolSizes = poolSizes;
+    VkDescriptorPoolCreateInfo poolCreateInfo = {};
+    poolCreateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    poolCreateInfo.pNext = nullptr;
+    poolCreateInfo.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
+    poolCreateInfo.maxSets = 1000;
+    poolCreateInfo.poolSizeCount = std::size(poolSizes);
+    poolCreateInfo.pPoolSizes = poolSizes;
 
     VkDescriptorPool imguiPool;
-    VK_CHECK(vkCreateDescriptorPool(device, &poolInfo, nullptr, &imguiPool));
+    VK_CHECK(vkCreateDescriptorPool(device, &poolCreateInfo, nullptr, &imguiPool));
 
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();

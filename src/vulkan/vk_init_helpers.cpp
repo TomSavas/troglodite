@@ -248,3 +248,84 @@ VkWriteDescriptorSet writeDescriptorImage(VkDescriptorType type, VkDescriptorSet
 
     return writeSet;
 }
+
+VkPipelineViewportStateCreateInfo pipelineViewportState(size_t viewportCount, VkViewport* viewports, size_t scissorCount, VkRect2D* scissor) {
+    VkPipelineViewportStateCreateInfo info = {};
+    info.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+    info.pNext = nullptr;
+
+    info.viewportCount = viewportCount;
+    info.pViewports = viewports;
+    info.scissorCount = scissorCount;
+    info.pScissors = scissor;
+
+    return info;
+}
+
+VkPipelineColorBlendStateCreateInfo pipelineColorBlendState(bool logicOpEnable, VkLogicOp logicOp, size_t attachmentCount, VkPipelineColorBlendAttachmentState* colorBlendAttachmentStates) {
+    VkPipelineColorBlendStateCreateInfo info = {};
+    info.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+    info.pNext = nullptr;
+
+    info.logicOpEnable = logicOpEnable ? VK_TRUE : VK_FALSE;
+    info.logicOp = logicOp;
+    info.attachmentCount = attachmentCount;
+    info.pAttachments = colorBlendAttachmentStates;
+
+    return info;
+}
+
+VkDescriptorSetAllocateInfo descriptorSetAllocate(VkDescriptorPool descriptorPool, size_t descriptorSetCount, VkDescriptorSetLayout* setLayouts) {
+    VkDescriptorSetAllocateInfo info = {};
+    info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    info.pNext = nullptr;
+
+    info.descriptorPool = descriptorPool;
+    info.descriptorSetCount = descriptorSetCount;
+    info.pSetLayouts = setLayouts;
+
+    return info;
+}
+
+VkCommandPoolCreateInfo commandPoolCreateInfo(uint32_t graphicsQueueFamily, VkCommandPoolCreateFlags flags) {
+    VkCommandPoolCreateInfo info = {};
+    info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    info.pNext = nullptr;
+
+    info.queueFamilyIndex = graphicsQueueFamily;
+    info.flags = flags;
+
+    return info;
+}
+
+VkCommandBufferAllocateInfo commandBufferAllocateInfo(uint32_t commandBufferCount, VkCommandBufferLevel level, VkCommandPool cmdPool) {
+    VkCommandBufferAllocateInfo info = {};
+    info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    info.pNext = nullptr;
+
+    info.commandPool = cmdPool;
+    info.level = level;
+    info.commandBufferCount = commandBufferCount;
+
+    return info;
+}
+
+VkFenceCreateInfo fenceCreateInfo(VkFenceCreateFlags flags) {
+    VkFenceCreateInfo info = {};
+    info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+    info.pNext = nullptr;
+
+    info.flags = flags;
+
+    return info;
+}
+
+VkSemaphoreCreateInfo semaphoreCreateInfo(VkSemaphoreCreateFlags flags) {
+    VkSemaphoreCreateInfo info = {};
+    info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+    info.pNext = nullptr;
+
+    info.flags = flags;
+
+    return info;
+}
