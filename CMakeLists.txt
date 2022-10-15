@@ -9,10 +9,11 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_FLAGS_DEBUG "-ggdb -O0 -DDEBUG -lvulkan")
 set(CMAKE_CXX_FLAGS_RELEASE "-O2 -lvulkan")
 
-file(GLOB_RECURSE SOURCES "src/*.cpp")
+file(GLOB_RECURSE SOURCES "src/*.cpp" "lib/imgui/*.cpp")
 
 add_executable(${EXEC} ${SOURCES})
 target_include_directories(${PROJECT} PRIVATE src/)
+target_include_directories(${PROJECT} PRIVATE lib/imgui)
 target_include_directories(${PROJECT} PRIVATE lib/tinygltf)
 target_include_directories(${PROJECT} PRIVATE lib/tinyobjloader)
 target_include_directories(${PROJECT} PRIVATE lib/stb_image)

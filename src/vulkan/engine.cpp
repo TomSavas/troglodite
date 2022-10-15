@@ -8,6 +8,10 @@
 #include <vk_mem_alloc.h>
 #include <vulkan/vulkan.h>
 
+#include "imgui.h"
+#include "imgui_impl_glfw.h"
+#include "imgui_impl_vulkan.h"
+
 #include "vulkan/engine.h"
 #include "vulkan/mesh.h"
 #include "vulkan/vk_shader.h"
@@ -85,6 +89,7 @@ VkPipeline VulkanPipelineBuilder::build(VkDevice device, VkRenderPass pass) {
     backend.initSyncStructs();
     backend.initDescriptors();
     backend.initPipelines();
+    backend.initImgui(window);
 
     backend.loadMeshes();
     backend.loadTextures();
@@ -558,6 +563,7 @@ void VulkanBackend::draw() {
 
     vkCmdBeginRenderPass(cmd, &rpInfo, VK_SUBPASS_CONTENTS_INLINE);
     scene.draw(*this, cmd, currentFrame());
+    ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), cmd); // TODO: move out to UI pass, or something above that
     vkCmdEndRenderPass(cmd);
     //finalize the command buffer (we can no longer add commands, but it can now be executed)
     VK_CHECK(vkEndCommandBuffer(cmd));
@@ -822,6 +828,65 @@ void VulkanBackend::initPipelines() {
     // Compiled into the pipeline, no need to have them hanging around any more
     vkDestroyShaderModule(device, triangleVert, nullptr);
     vkDestroyShaderModule(device, triangleFrag, nullptr);
+}
+
+void VulkanBackend::initImgui(GLFWwindow* window) {
+    // Create descriptor pool for ImGui
+    // the size of the pool is very oversize, but it's copied from imgui demo itself.
+    VkDescriptorPoolSize poolSizes[] =
+    {
+        { VK_DESCRIPTOR_TYPE_SAMPLER, 1000 },
+        { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1000 },
+        { VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1000 },
+        { VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1000 },
+        { VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, 1000 },
+        { VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, 1000 },
+        { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1000 },
+        { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1000 },
+        { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 1000 },
+        { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, 1000 },
+        { VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 1000 }
+    };
+
+    VkDescriptorPoolCreateInfo poolInfo = {};
+    poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    poolInfo.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
+    poolInfo.maxSets = 1000;
+    poolInfo.poolSizeCount = std::size(poolSizes);
+    poolInfo.pPoolSizes = poolSizes;
+
+    VkDescriptorPool imguiPool;
+    VK_CHECK(vkCreateDescriptorPool(device, &poolInfo, nullptr, &imguiPool));
+
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    ImGui::StyleColorsDark();
+    ImGui_ImplGlfw_InitForVulkan(window, true);
+
+    ImGui_ImplVulkan_InitInfo initInfo = {};
+    initInfo.Instance = instance;
+    initInfo.PhysicalDevice = gpu;
+    initInfo.Device = device;
+    initInfo.Queue = graphicsQueue;
+    initInfo.DescriptorPool = imguiPool;
+    initInfo.MinImageCount = 3;
+    initInfo.ImageCount = 3;
+    initInfo.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
+
+    ImGui_ImplVulkan_Init(&initInfo, defaultRenderpass);
+
+    immediateBlockingSubmit([&](VkCommandBuffer cmd) {
+        ImGui_ImplVulkan_CreateFontsTexture(cmd);
+    });
+    ImGui_ImplVulkan_DestroyFontUploadObjects();
+
+    deinitQueue.enqueue([=]() {
+        vkDestroyDescriptorPool(device, imguiPool, nullptr);
+
+        ImGui_ImplVulkan_Shutdown();
+        ImGui_ImplGlfw_Shutdown();
+        ImGui::DestroyContext();
+    });
 }
 
 FrameData& VulkanBackend::currentFrame() {

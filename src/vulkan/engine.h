@@ -154,6 +154,7 @@ struct VulkanBackend {
     void initSyncStructs();
     void initDescriptors();
     void initPipelines();
+    void initImgui(GLFWwindow* window);
 
     void loadMeshes();
     void loadTextures();

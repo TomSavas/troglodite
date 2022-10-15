@@ -3,6 +3,9 @@
 #include <math.h>
 
 #include "GLFW/glfw3.h"
+#include "imgui.h"
+#include "imgui_impl_glfw.h"
+#include "imgui_impl_vulkan.h"
 
 #include "vulkan/engine.h"
 
@@ -21,10 +24,6 @@ int main(void) {
     glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
     GLFWwindow* window = glfwCreateWindow(640, 480, "Troglodite", NULL, NULL);
 
-    //IMGUI_CHECKVERSION();
-    //ImGui::CreateContext();
-    //ImGui::StyleColorsDark();
-
     VulkanBackend backend = VulkanBackend::init(window);
     
     backend.scene.initTestScene();
@@ -32,6 +31,16 @@ int main(void) {
 
     while(!glfwWindowShouldClose(window)) {
         glfwPollEvents();
+
+        {
+            ImGui_ImplVulkan_NewFrame();
+            ImGui_ImplGlfw_NewFrame();
+            ImGui::NewFrame();
+
+            ImGui::ShowDemoWindow();
+        }
+
+        ImGui::Render();
         backend.draw();
 
         // TODO: quick hack -- VK_PRESENT_MODE_FIFO_KHR doesn't work on my 6600XT, so
