@@ -25,6 +25,7 @@ int main(void) {
     GLFWwindow* window = glfwCreateWindow(640, 480, "Troglodite", NULL, NULL);
 
     VulkanBackend backend = VulkanBackend::init(window);
+    backend.registerCallbacks();
     
     backend.scene.initTestScene();
     backend.scene.mainCamera.pos = { 0.f, -6.f, -10.f };

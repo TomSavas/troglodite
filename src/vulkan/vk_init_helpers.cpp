@@ -289,7 +289,7 @@ VkDescriptorSetAllocateInfo descriptorSetAllocate(VkDescriptorPool descriptorPoo
 
 VkCommandPoolCreateInfo commandPoolCreateInfo(uint32_t graphicsQueueFamily, VkCommandPoolCreateFlags flags) {
     VkCommandPoolCreateInfo info = {};
-    info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
     info.pNext = nullptr;
 
     info.queueFamilyIndex = graphicsQueueFamily;

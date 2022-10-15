@@ -92,10 +92,15 @@ struct VulkanBackend {
     static constexpr int MAX_FRAMES_IN_FLIGHT = 2;
     FrameData inFlightFrames[MAX_FRAMES_IN_FLIGHT];
 
+    VkExtent3D viewportSize;
+
     GPUSceneData sceneParams;
     AllocatedBuffer sceneParamsBuffers;
 
     FunctionQueue deinitQueue;
+    FunctionQueue swapchainDeinitQueue;
+
+    bool swapchainRegenRequested = false;
 
     Scene scene;
 
@@ -137,18 +142,21 @@ struct VulkanBackend {
 
     int frameNumber;
 
+    GLFWwindow* window;
+
     // TODO: should be stored along with the descriptor set
     VkDescriptorSetLayout globalDescriptorSetLayout;
     VkDescriptorSetLayout objectDescriptorSetLayout;
     VkDescriptorSetLayout singleTextureDescriptorSetLayout;
     VkDescriptorPool descriptorPool;
 
+    static void framebufferResizeCallback(GLFWwindow* window, int width, int height);
+    void registerCallbacks();
+
     static VulkanBackend init(GLFWwindow* window);
     void deinit();
 
-    
-
-    void initVulkan(GLFWwindow* window);
+    void initVulkan();
     void initSwapchain();
     void initCommandBuffers();
     void initDefaultRenderpass();
@@ -156,7 +164,7 @@ struct VulkanBackend {
     void initSyncStructs();
     void initDescriptors();
     void initPipelines();
-    void initImgui(GLFWwindow* window);
+    void initImgui();
 
     void loadMeshes();
     void loadTextures();

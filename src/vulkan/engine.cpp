@@ -18,7 +18,7 @@
 #include "vulkan/vk_init_helpers.h"
 
 #define LOG_CALL(code) do {                                      \
-        std::cout << "Calling deinitQueue: " #code << std::endl; \
+        std::cout << "Calling: " #code << std::endl; \
         code;                                                    \
     }                                                            \
     while(0)
@@ -31,6 +31,7 @@ void FunctionQueue::execute() {
     for (auto& func : functions) {
         func();
     }
+    functions.clear();
 }
 
 VkPipeline VulkanPipelineBuilder::build(VkDevice device, VkRenderPass pass) {
@@ -63,10 +64,21 @@ VkPipeline VulkanPipelineBuilder::build(VkDevice device, VkRenderPass pass) {
     return pipeline;
 }
 
+/*static*/ void VulkanBackend::framebufferResizeCallback(GLFWwindow* window, int width, int height) {
+    VulkanBackend* backend = reinterpret_cast<VulkanBackend*>(glfwGetWindowUserPointer(window));
+    backend->swapchainRegenRequested = true;
+}
+
+void VulkanBackend::registerCallbacks() {
+    glfwSetWindowUserPointer(window, this);
+    glfwSetFramebufferSizeCallback(window, VulkanBackend::framebufferResizeCallback);
+}
+
 /*static*/ VulkanBackend VulkanBackend::init(GLFWwindow* window) {
     VulkanBackend backend;
-    
-    backend.initVulkan(window);
+    backend.window = window;
+
+    backend.initVulkan();
     backend.initSwapchain();
     backend.initCommandBuffers();
     backend.initDefaultRenderpass();
@@ -74,7 +86,7 @@ VkPipeline VulkanPipelineBuilder::build(VkDevice device, VkRenderPass pass) {
     backend.initSyncStructs();
     backend.initDescriptors();
     backend.initPipelines();
-    backend.initImgui(window);
+    backend.initImgui();
 
     backend.loadMeshes();
     backend.loadTextures();
@@ -114,14 +126,21 @@ void VulkanBackend::loadTextures() {
 
     VkImageViewCreateInfo imageViewInfo = imageViewCreateInfo(VK_FORMAT_R8G8B8A8_SRGB, lostEmpire.image.image, VK_IMAGE_ASPECT_COLOR_BIT);
     vkCreateImageView(device, &imageViewInfo, nullptr, &lostEmpire.view);
-
     scene.textures["lost_empire_diffuse"] = lostEmpire;
+
+    deinitQueue.enqueue([&]() {
+        LOG_CALL(vkDestroyImageView(device, scene.textures["lost_empire_diffuse"].view, nullptr));
+    });
 
     //TODO: definitely should be elsewhere
     VkSamplerCreateInfo samplerInfo = samplerCreateInfo(VK_FILTER_NEAREST);
 
-    VkSampler nearestSampler;
+    static VkSampler nearestSampler;
     vkCreateSampler(device, &samplerInfo, nullptr, &nearestSampler);
+
+    deinitQueue.enqueue([&]() {
+        LOG_CALL(vkDestroySampler(device, nearestSampler, nullptr));
+    });
 
     VkDescriptorSetAllocateInfo setAllocInfo = descriptorSetAllocate(descriptorPool, 1, &singleTextureDescriptorSetLayout);
 
@@ -140,21 +159,10 @@ void VulkanBackend::loadTextures() {
 void VulkanBackend::uploadMesh(Mesh& mesh) {
     const size_t bufferSize = mesh.vertices.size() * sizeof(Vertex);
 
-    VkBufferCreateInfo cpuBufferCreateInfo = bufferCreateInfo(bufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
-    VmaAllocationCreateInfo cpuBufferAllocInfo = {};
-    cpuBufferAllocInfo.usage = VMA_MEMORY_USAGE_CPU_ONLY;
-
     AllocatedBuffer cpuBuffer = createBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
-    VK_CHECK(vmaCreateBuffer(allocator, &cpuBufferCreateInfo, &cpuBufferAllocInfo,
-                &cpuBuffer.buffer, &cpuBuffer.allocation, nullptr));
     uploadData(mesh.vertices.data(), bufferSize, 0, cpuBuffer.allocation);
 
-    VkBufferCreateInfo gpuBufferCreateInfo = bufferCreateInfo(bufferSize, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT);
-    VmaAllocationCreateInfo gpuBufferAllocInfo = {};
-    gpuBufferAllocInfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
-
-    VK_CHECK(vmaCreateBuffer(allocator, &gpuBufferCreateInfo, &gpuBufferAllocInfo,
-                &mesh.vertexBuffer.buffer, &mesh.vertexBuffer.allocation, nullptr));
+    mesh.vertexBuffer = createBuffer(bufferSize, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VMA_MEMORY_USAGE_GPU_ONLY);
 
     immediateBlockingSubmit([&](VkCommandBuffer cmd) {
         VkBufferCopy copy = {};       
@@ -181,6 +189,7 @@ void VulkanBackend::uploadData(const void* data, size_t size, size_t offset, Vma
 }
 
 void VulkanBackend::deinit() {
+    swapchainDeinitQueue.execute();
     deinitQueue.execute();
 
     vmaDestroyAllocator(allocator);
@@ -191,7 +200,7 @@ void VulkanBackend::deinit() {
     vkDestroyInstance(instance, nullptr);
 }
 
-void VulkanBackend::initVulkan(GLFWwindow* window) {
+void VulkanBackend::initVulkan() {
     vkb::InstanceBuilder builder;
     vkbInstance = builder.set_app_name("Troglodite")
         .request_validation_layers(true)
@@ -236,6 +245,16 @@ void VulkanBackend::initVulkan(GLFWwindow* window) {
 }
 
 void VulkanBackend::initSwapchain() {
+    int width;
+    int height;  
+    glfwGetFramebufferSize(window, &width, &height);
+    while (width == 0 || height == 0) {
+        glfwGetFramebufferSize(window, &width, &height);
+        glfwWaitEvents();
+    }
+    vkDeviceWaitIdle(device);
+    viewportSize = VkExtent3D {width, height, 1};
+
     vkb::SwapchainBuilder builder { gpu, device, surface };
     vkb::Swapchain vkbSwapchain = builder
         .use_default_format_selection()
@@ -243,7 +262,7 @@ void VulkanBackend::initSwapchain() {
         .set_desired_present_mode(VK_PRESENT_MODE_MAILBOX_KHR)
         //.set_desired_present_mode(VK_PRESENT_MODE_FIFO_RELAXED_KHR)
         //.set_desired_present_mode(VK_PRESENT_MODE_IMMEDIATE_KHR)
-        .set_desired_extent(640, 480)
+        .set_desired_extent(viewportSize.width, viewportSize.height)
         .build()
         .value();
 
@@ -252,11 +271,11 @@ void VulkanBackend::initSwapchain() {
     swapchainImageViews = vkbSwapchain.get_image_views().value();
     swapchainImageFormat = vkbSwapchain.image_format;
 
-    deinitQueue.enqueue([=]() {
+    swapchainDeinitQueue.enqueue([=]() {
         LOG_CALL(vkDestroySwapchainKHR(device, swapchain, nullptr));
     });
 
-    VkExtent3D depthImageExtent = { 640, 480, 1 };
+    VkExtent3D depthImageExtent = viewportSize;
     depthFormat = VK_FORMAT_D32_SFLOAT;
 
     VkImageCreateInfo depthImageInfo = imageCreateInfo(depthFormat, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, depthImageExtent);
@@ -266,18 +285,16 @@ void VulkanBackend::initSwapchain() {
     depthImageAlloc.requiredFlags = VkMemoryPropertyFlags(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
     vmaCreateImage(allocator, &depthImageInfo, &depthImageAlloc, &depthImage.image, &depthImage.allocation, nullptr);
 
-    deinitQueue.enqueue([=]() {
+    swapchainDeinitQueue.enqueue([=]() {
         LOG_CALL(vmaDestroyImage(allocator, depthImage.image, depthImage.allocation));
     });
 
     VkImageViewCreateInfo depthViewInfo = imageViewCreateInfo(depthFormat, depthImage.image, VK_IMAGE_ASPECT_DEPTH_BIT);
     VK_CHECK(vkCreateImageView(device, &depthViewInfo, nullptr, &depthImageView));
 
-    deinitQueue.enqueue([=]() {
+    swapchainDeinitQueue.enqueue([=]() {
         LOG_CALL(vkDestroyImageView(device, depthImageView, nullptr));
     });
-
-    //TODO: delete depth stuff
 }
 
 void VulkanBackend::initCommandBuffers() {
@@ -404,8 +421,8 @@ void VulkanBackend::initFramebuffers() {
 
     fbInfo.renderPass = defaultRenderpass;
     fbInfo.attachmentCount = 1;
-    fbInfo.width = 640;
-    fbInfo.height = 480;
+    fbInfo.width = viewportSize.width;
+    fbInfo.height = viewportSize.height;
     fbInfo.layers = 1;
 
     //grab how many images we have in the swapchain
@@ -422,7 +439,7 @@ void VulkanBackend::initFramebuffers() {
         VK_CHECK(vkCreateFramebuffer(device, &fbInfo, nullptr, &framebuffers[i]));
     }
 
-    deinitQueue.enqueue([=]() {
+    swapchainDeinitQueue.enqueue([=]() {
         LOG_CALL(
             for (int i = 0; i < swapchainImageViews.size(); i++) {
                 vkDestroyFramebuffer(device, framebuffers[i], nullptr);
@@ -463,11 +480,28 @@ void VulkanBackend::initSyncStructs() {
 
 void VulkanBackend::draw() {
     VK_CHECK(vkWaitForFences(device, 1, &currentFrame().renderFence, true, 1000000000));
-    VK_CHECK(vkResetFences(device, 1, &currentFrame().renderFence));
 
-    //request image from the swapchain, one second timeout
+    // Request image from the swapchain, one second timeout
     uint32_t swapchainImageIndex;
-    VK_CHECK(vkAcquireNextImageKHR(device, swapchain, 1000000000, currentFrame().presentSem, nullptr, &swapchainImageIndex));
+    VkResult nextImageResult = vkAcquireNextImageKHR(device, swapchain, 1000000000, currentFrame().presentSem, nullptr, &swapchainImageIndex);
+
+    bool swapchainRegenNeeded = nextImageResult == VK_ERROR_OUT_OF_DATE_KHR 
+        || nextImageResult == VK_SUBOPTIMAL_KHR
+        || swapchainRegenRequested;
+    if (swapchainRegenNeeded) {
+        swapchainDeinitQueue.execute();
+        initSwapchain();
+        initFramebuffers();
+
+        swapchainRegenRequested = false;
+
+        // Re-request the image from recreated swapchain and continue as usual
+        VK_CHECK(vkWaitForFences(device, 1, &currentFrame().renderFence, true, 1000000000));
+        nextImageResult = vkAcquireNextImageKHR(device, swapchain, 1000000000, currentFrame().presentSem, nullptr, &swapchainImageIndex);
+    }
+    VK_CHECK(nextImageResult);
+
+    VK_CHECK(vkResetFences(device, 1, &currentFrame().renderFence));
 
     //now that we are sure that the commands finished executing, we can safely reset the command buffer to begin recording again.
     VK_CHECK(vkResetCommandBuffer(currentFrame().cmdBuffer, 0));
@@ -496,6 +530,7 @@ void VulkanBackend::draw() {
     rpInfo.renderPass = defaultRenderpass;
     rpInfo.renderArea.offset.x = 0;
     rpInfo.renderArea.offset.y = 0;
+    //rpInfo.renderArea.extent = { viewportSize.width, viewportSize.height };
     rpInfo.renderArea.extent = { 640, 480 };
     rpInfo.framebuffer = framebuffers[swapchainImageIndex];
 
@@ -774,7 +809,7 @@ void VulkanBackend::initPipelines() {
     vkDestroyShaderModule(device, triangleFrag, nullptr);
 }
 
-void VulkanBackend::initImgui(GLFWwindow* window) {
+void VulkanBackend::initImgui() {
     // Create descriptor pool for ImGui
     // the size of the pool is very oversize, but it's copied from imgui demo itself.
     VkDescriptorPoolSize poolSizes[] =
