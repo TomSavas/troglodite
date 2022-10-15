@@ -6,8 +6,8 @@ set(EXEC ${PROJECT})
 
 set(CMAKE_CXX_STANDARD 17)
 
-set(CMAKE_CXX_FLAGS_DEBUG "-ggdb -O0 -DDEBUG -lvulkan")
-set(CMAKE_CXX_FLAGS_RELEASE "-O2 -lvulkan")
+set(CMAKE_CXX_FLAGS_DEBUG "-ggdb -O0 -DDEBUG -lvulkan -Wall")
+set(CMAKE_CXX_FLAGS_RELEASE "-O2 -lvulkan -Wall")
 
 file(GLOB_RECURSE SOURCES "src/*.cpp" "lib/imgui/*.cpp")
 

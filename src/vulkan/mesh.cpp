@@ -84,7 +84,7 @@ void Mesh::loadFromObj(const char* filename) {
             int fv = 3;
 
             // Loop over vertices in the face.
-            for (size_t v = 0; v < fv; v++) {
+            for (int v = 0; v < fv; v++) {
                 // access to vertex
                 tinyobj::index_t idx = shapes[s].mesh.indices[index_offset + v];
 

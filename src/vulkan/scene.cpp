@@ -59,7 +59,7 @@ void Scene::draw(VulkanBackend& backend, VkCommandBuffer cmd, FrameData& frameDa
         void* gpuData;
         vmaMapMemory(backend.allocator, frameData.objectDataBuffer.allocation, &gpuData);
         GPUObjectData* gpuObjectData = (GPUObjectData*)gpuData;
-        for (int i = 0; i < renderables.size(); i++) {
+        for (size_t i = 0; i < renderables.size(); i++) {
             gpuObjectData[i].modelMatrix = renderables[i].modelMatrix;
         }
         vmaUnmapMemory(backend.allocator, frameData.objectDataBuffer.allocation);
@@ -67,7 +67,7 @@ void Scene::draw(VulkanBackend& backend, VkCommandBuffer cmd, FrameData& frameDa
 
     Mesh* lastMesh = nullptr;
     Material* lastMaterial = nullptr;
-    for (int i = 0; i < renderables.size(); i++) {
+    for (size_t i = 0; i < renderables.size(); i++) {
         RenderObject& renderable = renderables[i];
         if (renderable.material == nullptr || renderable.mesh == nullptr) {
             continue;

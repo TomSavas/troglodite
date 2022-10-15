@@ -253,7 +253,7 @@ void VulkanBackend::initSwapchain() {
         glfwWaitEvents();
     }
     vkDeviceWaitIdle(device);
-    viewportSize = VkExtent3D {width, height, 1};
+    viewportSize = VkExtent3D {(uint32_t) width, (uint32_t) height, 1};
 
     vkb::SwapchainBuilder builder { gpu, device, surface };
     vkb::Swapchain vkbSwapchain = builder
@@ -430,7 +430,7 @@ void VulkanBackend::initFramebuffers() {
     framebuffers = std::vector<VkFramebuffer>(swapchainImageCount);
 
     //create framebuffers for each of the swapchain image views
-    for (int i = 0; i < swapchainImageCount; i++) {
+    for (uint32_t i = 0; i < swapchainImageCount; i++) {
         VkImageView attachments[] = { swapchainImageViews[i], depthImageView };
 
         fbInfo.attachmentCount = 2;
@@ -441,7 +441,7 @@ void VulkanBackend::initFramebuffers() {
 
     swapchainDeinitQueue.enqueue([=]() {
         LOG_CALL(
-            for (int i = 0; i < swapchainImageViews.size(); i++) {
+            for (size_t i = 0; i < swapchainImageViews.size(); i++) {
                 vkDestroyFramebuffer(device, framebuffers[i], nullptr);
                 // TODO: maybe where it's created?
                 vkDestroyImageView(device, swapchainImageViews[i], nullptr);
@@ -584,8 +584,6 @@ void VulkanBackend::draw() {
 }
 
 void VulkanBackend::immediateBlockingSubmit(std::function<void(VkCommandBuffer)>&& func) {
-    VkCommandBuffer cmd = uploadCtx.cmdBuffer;
-
     VkCommandBufferBeginInfo beginInfo = commandBufferBeginInfo(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
     VK_CHECK(vkBeginCommandBuffer(uploadCtx.cmdBuffer, &beginInfo));
     func(uploadCtx.cmdBuffer);

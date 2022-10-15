@@ -206,7 +206,6 @@ VkSubmitInfo submitInfo(VkCommandBuffer* cmd) {
     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
     submitInfo.pNext = nullptr;
 
-    VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
     submitInfo.pWaitDstStageMask = nullptr;
 
     submitInfo.waitSemaphoreCount = 0;
