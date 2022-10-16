@@ -44,15 +44,13 @@ struct VulkanPipelineBuilder {
     std::vector<VkPipelineShaderStageCreateInfo> shaderStages;
     VkPipelineVertexInputStateCreateInfo vertexInputInfo;
     VkPipelineInputAssemblyStateCreateInfo inputAssembly;
-    VkViewport viewport;
-    VkRect2D scissor;
     VkPipelineRasterizationStateCreateInfo rasterizer;
     VkPipelineColorBlendAttachmentState colorBlendAttachment;
     VkPipelineMultisampleStateCreateInfo multisampling;
     VkPipelineLayout pipelineLayout;
     VkPipelineDepthStencilStateCreateInfo depthStencil;
 
-    VkPipeline build(VkDevice device, VkRenderPass pass);
+    VkPipeline build(VkDevice device, VkRenderPass pass, VkViewport* viewport, VkRect2D* scissor);
 };
 
 struct GPUCameraData {
@@ -91,6 +89,9 @@ struct FrameData {
 struct VulkanBackend { 
     static constexpr int MAX_FRAMES_IN_FLIGHT = 2;
     FrameData inFlightFrames[MAX_FRAMES_IN_FLIGHT];
+
+    VkViewport viewport;
+    VkRect2D scissor;
 
     VkExtent3D viewportSize;
 

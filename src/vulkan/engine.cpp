@@ -34,9 +34,17 @@ void FunctionQueue::execute() {
     functions.clear();
 }
 
-VkPipeline VulkanPipelineBuilder::build(VkDevice device, VkRenderPass pass) {
-    VkPipelineViewportStateCreateInfo viewportState = pipelineViewportState(1, &viewport, 1, &scissor);
+VkPipeline VulkanPipelineBuilder::build(VkDevice device, VkRenderPass pass, VkViewport* viewport, VkRect2D* scissor) {
+    VkPipelineViewportStateCreateInfo viewportState = pipelineViewportState(1, viewport, 1, scissor);
+
     VkPipelineColorBlendStateCreateInfo colorBlending = pipelineColorBlendState(false, VK_LOGIC_OP_COPY, 1, &colorBlendAttachment);
+
+    VkDynamicState dynamicStates[] = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
+    VkPipelineDynamicStateCreateInfo dynamicState = {};
+    dynamicState.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+    dynamicState.pNext = nullptr;
+    dynamicState.dynamicStateCount = 2;
+    dynamicState.pDynamicStates = dynamicStates;
 
     VkGraphicsPipelineCreateInfo pipelineInfo = {};
     pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
@@ -50,6 +58,7 @@ VkPipeline VulkanPipelineBuilder::build(VkDevice device, VkRenderPass pass) {
     pipelineInfo.pRasterizationState = &rasterizer;
     pipelineInfo.pMultisampleState = &multisampling;
     pipelineInfo.pColorBlendState = &colorBlending; // TODO change
+    pipelineInfo.pDynamicState = &dynamicState;
     pipelineInfo.pDepthStencilState = &depthStencil;
     pipelineInfo.layout = pipelineLayout;
     pipelineInfo.renderPass = pass;
@@ -530,9 +539,12 @@ void VulkanBackend::draw() {
     rpInfo.renderPass = defaultRenderpass;
     rpInfo.renderArea.offset.x = 0;
     rpInfo.renderArea.offset.y = 0;
-    //rpInfo.renderArea.extent = { viewportSize.width, viewportSize.height };
-    rpInfo.renderArea.extent = { 640, 480 };
+    rpInfo.renderArea.extent = { viewportSize.width, viewportSize.height };
     rpInfo.framebuffer = framebuffers[swapchainImageIndex];
+
+    viewport.width = viewportSize.width;
+    viewport.height = viewportSize.height;
+    scissor.extent = { viewportSize.width, viewportSize.height };
 
     //connect clear values
     VkClearValue clearValues[] = { colorClear, depthClear };
@@ -540,6 +552,8 @@ void VulkanBackend::draw() {
     rpInfo.pClearValues = clearValues;
 
     vkCmdBeginRenderPass(cmd, &rpInfo, VK_SUBPASS_CONTENTS_INLINE);
+    vkCmdSetViewport(cmd, 0, 1, &viewport);
+    vkCmdSetScissor(cmd, 0, 1, &scissor);
     scene.draw(*this, cmd, currentFrame());
     ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), cmd); // TODO: move out to UI pass, or something above that
     vkCmdEndRenderPass(cmd);
@@ -779,15 +793,15 @@ void VulkanBackend::initPipelines() {
 
     builder.inputAssembly = inputAssemblyCreateInfo(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
 
-    builder.viewport.x = 0.f;
-    builder.viewport.y = 0.f;
-    builder.viewport.width = 640.f;
-    builder.viewport.height = 480.f;
-    builder.viewport.minDepth = 0.f;
-    builder.viewport.maxDepth = 1.f;
+    viewport.x = 0.f;
+    viewport.y = 0.f;
+    viewport.width = 640.f;
+    viewport.height = 480.f;
+    viewport.minDepth = 0.f;
+    viewport.maxDepth = 1.f;
 
-    builder.scissor.offset = { 0, 0 };
-    builder.scissor.extent = { 640, 480 };
+    scissor.offset = { 0, 0 };
+    scissor.extent = { 640, 480 };
 
     builder.rasterizer = rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL);
     builder.multisampling = multisampleStateCreateInfo();
@@ -795,7 +809,7 @@ void VulkanBackend::initPipelines() {
     builder.depthStencil = depthStencilCreateInfo(true, true, VK_COMPARE_OP_LESS_OR_EQUAL);
     builder.pipelineLayout = pipelineLayout;
 
-    pipeline = builder.build(device, defaultRenderpass);
+    pipeline = builder.build(device, defaultRenderpass, &viewport, &scissor);
     scene.createMaterial(pipeline, pipelineLayout, "defaultMaterial");
 
     deinitQueue.enqueue([=]() {
