@@ -1,3 +1,4 @@
+#include <chrono>
 #include <stdio.h>
 #include <vector>
 #include <math.h>
@@ -28,11 +29,19 @@ int main(void) {
     backend.registerCallbacks();
     
     backend.scene.initTestScene();
-    backend.scene.mainCamera.pos = { 0.f, -6.f, -10.f };
+    backend.scene.mainCamera.pos = { 0.f, 6.f, 10.f };
 
+    auto start = std::chrono::high_resolution_clock::now();
+    auto end = std::chrono::high_resolution_clock::now();
     while(!glfwWindowShouldClose(window)) {
+        end = std::chrono::high_resolution_clock::now();
+        auto elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start);
+        double dt = (double)elapsed.count() / 1000000000.0;
+        start = std::chrono::high_resolution_clock::now();
+
         glfwPollEvents();
 
+        backend.scene.update(backend, dt);
         {
             ImGui_ImplVulkan_NewFrame();
             ImGui_ImplGlfw_NewFrame();
@@ -40,9 +49,10 @@ int main(void) {
 
             ImGui::ShowDemoWindow();
         }
-
         ImGui::Render();
         backend.draw();
+
+        end = std::chrono::system_clock::now();
 
         // TODO: quick hack -- VK_PRESENT_MODE_FIFO_KHR doesn't work on my 6600XT, so
         // hack the FPS limit with VK_PRESENT_MODE_MAILBOX_KHR

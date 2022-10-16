@@ -1,6 +1,7 @@
 #include <glm/glm.hpp>
 #include <glm/gtx/transform.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtx/euler_angles.hpp>
 
 #include "engine.h"
 #include "mesh.h"
@@ -34,12 +35,82 @@ void Scene::initTestScene() {
     }
 }
 
+glm::vec3 right(glm::mat4 mat) {
+    return mat * glm::vec4(1.f, 0.f, 0.f, 0.f);
+}
+
+glm::vec3 up(glm::mat4 mat) {
+    return mat * glm::vec4(0.f, 1.f, 0.f, 0.f);
+}
+
+glm::vec3 forward(glm::mat4 mat) {
+    return mat * glm::vec4(0.f, 0.f, -1.f, 0.f);
+}
+
+void Scene::update(VulkanBackend& backend, float dt) {
+    static glm::dvec2 lastMousePos = glm::vec2(-1.f -1.f);
+    if (glfwGetMouseButton(backend.window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS) {
+        static double radToVertical = .0;
+        static double radToHorizon = .0;
+
+        if (lastMousePos.x == -1.f) {
+            glfwGetCursorPos(backend.window, &lastMousePos.x, &lastMousePos.y);
+        }
+
+        glm::dvec2 mousePos;
+        glfwGetCursorPos(backend.window, &mousePos.x, &mousePos.y);
+        glm::dvec2 mousePosDif = mousePos - lastMousePos;
+        lastMousePos = mousePos;
+
+        radToVertical += mousePosDif.x * mainCamera.horizontalRotationSpeed / mainCamera.aspectRatio;
+        while(radToVertical > glm::pi<float>() * 2) {
+            radToVertical -= glm::pi<float>() * 2;
+        }
+        while(radToVertical < -glm::pi<float>() * 2) {
+            radToVertical += glm::pi<float>() * 2;
+        }
+
+        radToHorizon -= mousePosDif.y * mainCamera.horizontalRotationSpeed;
+        radToHorizon = std::min(std::max(radToHorizon, -glm::pi<double>() / 2 + 0.01), glm::pi<double>() / 2 - 0.01);
+
+        mainCamera.rotation = glm::eulerAngleYX(-radToVertical, radToHorizon);
+    }
+    else
+    {
+        glfwGetCursorPos(backend.window, &lastMousePos.x, &lastMousePos.y);
+    }
+
+    glm::vec3 dir(0.f, 0.f, 0.f);
+    if (glfwGetKey(backend.window, GLFW_KEY_W) == GLFW_PRESS) {
+        dir += forward(mainCamera.rotation);
+    }
+    if (glfwGetKey(backend.window, GLFW_KEY_S) == GLFW_PRESS) {
+        dir -= forward(mainCamera.rotation);
+    }
+
+    if (glfwGetKey(backend.window, GLFW_KEY_D) == GLFW_PRESS) {
+        dir += right(mainCamera.rotation);
+    }
+    if (glfwGetKey(backend.window, GLFW_KEY_A) == GLFW_PRESS) {
+        dir -= right(mainCamera.rotation);
+    }
+
+    if (glfwGetKey(backend.window, GLFW_KEY_SPACE) == GLFW_PRESS) {
+        dir += up(mainCamera.rotation);
+    }
+    if (glfwGetKey(backend.window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS) {
+        dir -= up(mainCamera.rotation);
+    }
+
+    mainCamera.pos += dir * mainCamera.moveSpeed * dt;
+}
+
 void Scene::draw(VulkanBackend& backend, VkCommandBuffer cmd, FrameData& frameData) {
     if (renderables.size() == 0) {
         return;
     }
 
-    glm::mat4 view = glm::translate(glm::mat4(1.f), mainCamera.pos);
+    glm::mat4 view = glm::lookAt(mainCamera.pos, mainCamera.pos + forward(mainCamera.rotation), up(mainCamera.rotation));
     glm::mat4 projection = glm::perspective(glm::radians(70.f), 1700.f / 900.f, 0.1f, 200.f);
     projection[1][1] *= -1; 
 
