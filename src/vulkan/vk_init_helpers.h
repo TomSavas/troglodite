@@ -36,3 +36,6 @@ VkCommandBufferAllocateInfo commandBufferAllocateInfo(uint32_t commandBufferCoun
 
 VkFenceCreateInfo fenceCreateInfo(VkFenceCreateFlags flags);
 VkSemaphoreCreateInfo semaphoreCreateInfo(VkSemaphoreCreateFlags flags);
+
+VkDescriptorBufferInfo descriptorBufferInfo(VkBuffer buffer, uint64_t offse, uint64_t range);
+VkDescriptorImageInfo descriptorImageInfo(VkBuffer buffer, uint64_t offse, uint64_t range);

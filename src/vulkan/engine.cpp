@@ -12,6 +12,7 @@
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_vulkan.h"
 
+#include "vulkan/descriptors.h"
 #include "vulkan/engine.h"
 #include "vulkan/mesh.h"
 #include "vulkan/vk_shader.h"
@@ -83,9 +84,23 @@ void VulkanBackend::registerCallbacks() {
     glfwSetFramebufferSizeCallback(window, VulkanBackend::framebufferResizeCallback);
 }
 
+VkExtent3D glfwFramebufferSize(GLFWwindow* window) {
+    int width;
+    int height;  
+    glfwGetFramebufferSize(window, &width, &height);
+    while (width == 0 || height == 0) {
+        glfwGetFramebufferSize(window, &width, &height);
+        glfwWaitEvents();
+    }
+
+    return VkExtent3D {(uint32_t) width, (uint32_t) height, 1};
+}
+
 /*static*/ VulkanBackend VulkanBackend::init(GLFWwindow* window) {
     VulkanBackend backend;
     backend.window = window;
+
+    backend.viewportSize = glfwFramebufferSize(window);
 
     backend.initVulkan();
     backend.initSwapchain();
@@ -254,15 +269,8 @@ void VulkanBackend::initVulkan() {
 }
 
 void VulkanBackend::initSwapchain() {
-    int width;
-    int height;  
-    glfwGetFramebufferSize(window, &width, &height);
-    while (width == 0 || height == 0) {
-        glfwGetFramebufferSize(window, &width, &height);
-        glfwWaitEvents();
-    }
+    viewportSize = glfwFramebufferSize(window);
     vkDeviceWaitIdle(device);
-    viewportSize = VkExtent3D {(uint32_t) width, (uint32_t) height, 1};
 
     vkb::SwapchainBuilder builder { gpu, device, surface };
     vkb::Swapchain vkbSwapchain = builder
@@ -633,103 +641,49 @@ void VulkanBackend::initDescriptors() {
         LOG_CALL(vkDestroyDescriptorPool(device, descriptorPool, nullptr));
     });
 
+    layoutCache = new DescriptorSetLayoutCache(device);
+    descriptorSetAllocator = new DescriptorSetAllocator(device, descriptorPool);
+
+    const int MAX_OBJECTS = 10000;
+    // Create buffers
     const size_t sceneParamsBuffersSize = MAX_FRAMES_IN_FLIGHT * padUniformBufferSize(sizeof(GPUSceneData));
     sceneParamsBuffers = createBuffer(sceneParamsBuffersSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
-
-    VkDescriptorSetLayoutBinding cameraBufferBinding = descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_VERTEX_BIT, 0);
-    VkDescriptorSetLayoutBinding sceneParamsBinding = descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 1);
-
-    VkDescriptorSetLayoutBinding setBindings[] = { cameraBufferBinding, sceneParamsBinding };
-
-    VkDescriptorSetLayoutCreateInfo setLayoutInfo = {};
-    setLayoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-    setLayoutInfo.pNext = nullptr;
-    setLayoutInfo.bindingCount = 2;
-    setLayoutInfo.flags = 0;
-    setLayoutInfo.pBindings = setBindings;
-
-    vkCreateDescriptorSetLayout(device, &setLayoutInfo, nullptr, &globalDescriptorSetLayout);
-    deinitQueue.enqueue([=]() {
-        LOG_CALL(vkDestroyDescriptorSetLayout(device, globalDescriptorSetLayout, nullptr));
-    });
-
-    VkDescriptorSetLayoutBinding objectDataBufferBinding = descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_VERTEX_BIT, 0);
-    VkDescriptorSetLayoutCreateInfo set2LayoutInfo = {};
-    set2LayoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-    set2LayoutInfo.pNext = nullptr;
-    set2LayoutInfo.bindingCount = 1;
-    set2LayoutInfo.flags = 0;
-    set2LayoutInfo.pBindings = &objectDataBufferBinding;
-
-    vkCreateDescriptorSetLayout(device, &set2LayoutInfo, nullptr, &objectDescriptorSetLayout);
-    deinitQueue.enqueue([=]() {
-        LOG_CALL(vkDestroyDescriptorSetLayout(device, objectDescriptorSetLayout, nullptr));
-    });
-
-    VkDescriptorSetLayoutBinding textureBinding = descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, 0);
-    VkDescriptorSetLayoutCreateInfo imageSetLayoutInfo = {};
-    imageSetLayoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-    imageSetLayoutInfo.pNext = nullptr;
-    imageSetLayoutInfo.bindingCount = 1;
-    imageSetLayoutInfo.flags = 0;
-    imageSetLayoutInfo.pBindings = &textureBinding;
-
-    vkCreateDescriptorSetLayout(device, &imageSetLayoutInfo, nullptr, &singleTextureDescriptorSetLayout);
-    deinitQueue.enqueue([=]() {
-        LOG_CALL(vkDestroyDescriptorSetLayout(device, singleTextureDescriptorSetLayout, nullptr));
-    });
-
+    VkDescriptorBufferInfo sceneParamsDescriptorInfo = descriptorBufferInfo(sceneParamsBuffers.buffer, 0, sizeof(GPUSceneData));
     for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-        // Create buffer 
         inFlightFrames[i].cameraUBO = createBuffer(sizeof(GPUCameraData), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
-
-        // Allocate descriptor set from the pool
-        VkDescriptorSetAllocateInfo setAllocInfo = {};
-        setAllocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-        setAllocInfo.pNext = nullptr;
-        setAllocInfo.descriptorPool = descriptorPool;
-        setAllocInfo.descriptorSetCount = 1;
-        setAllocInfo.pSetLayouts = &globalDescriptorSetLayout;
-
-        vkAllocateDescriptorSets(device, &setAllocInfo, &inFlightFrames[i].globalDescriptor);
-
-        const int MAX_OBJECTS = 10000;
         inFlightFrames[i].objectDataBuffer = createBuffer(sizeof(GPUObjectData) * MAX_OBJECTS, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
-
-        VkDescriptorSetAllocateInfo set2AllocInfo = {};
-        set2AllocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-        set2AllocInfo.pNext = nullptr;
-        set2AllocInfo.descriptorPool = descriptorPool;
-        set2AllocInfo.descriptorSetCount = 1;
-        set2AllocInfo.pSetLayouts = &objectDescriptorSetLayout;
-
-        vkAllocateDescriptorSets(device, &set2AllocInfo, &inFlightFrames[i].objectDescriptor);
-
-        // Point the created descriptor set to the buffer
-        VkDescriptorBufferInfo cameraDescriptorInfo = {};
-        cameraDescriptorInfo.buffer = inFlightFrames[i].cameraUBO.buffer;
-        cameraDescriptorInfo.offset = 0;
-        cameraDescriptorInfo.range = sizeof(GPUCameraData);
-        
-        VkDescriptorBufferInfo sceneDescriptorInfo = {};
-        sceneDescriptorInfo.buffer = sceneParamsBuffers.buffer;
-        //sceneDescriptorInfo.offset = padUniformBufferSize(sizeof(GPUSceneData)) * i; // Not needed for dynamic descriptors...
-        sceneDescriptorInfo.offset = 0;
-        sceneDescriptorInfo.range = sizeof(GPUSceneData);
-
-        VkDescriptorBufferInfo objectDescriptorInfo = {};
-        objectDescriptorInfo.buffer = inFlightFrames[i].objectDataBuffer.buffer;
-        objectDescriptorInfo.offset = 0;
-        objectDescriptorInfo.range = sizeof(GPUObjectData) * MAX_OBJECTS;
-
-        VkWriteDescriptorSet cameraSetWrite = writeDescriptorBuffer(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, inFlightFrames[i].globalDescriptor, &cameraDescriptorInfo, 0);
-        VkWriteDescriptorSet sceneSetWrite = writeDescriptorBuffer(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, inFlightFrames[i].globalDescriptor, &sceneDescriptorInfo, 1);
-        VkWriteDescriptorSet objectSetWrite = writeDescriptorBuffer(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, inFlightFrames[i].objectDescriptor, &objectDescriptorInfo, 0); // different set
-
-        VkWriteDescriptorSet setWrites[] = { cameraSetWrite, sceneSetWrite, objectSetWrite };
-
-        vkUpdateDescriptorSets(device, 3, setWrites, 0, nullptr);
     }
+
+    // Generate infos
+    VkDescriptorBufferInfo cameraDescriptorInfos[MAX_FRAMES_IN_FLIGHT];
+    VkDescriptorBufferInfo objectDescriptorInfos[MAX_FRAMES_IN_FLIGHT];
+    for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+        cameraDescriptorInfos[i] = descriptorBufferInfo(inFlightFrames[i].cameraUBO.buffer, 0, sizeof(GPUCameraData));
+        objectDescriptorInfos[i] = descriptorBufferInfo(inFlightFrames[i].objectDataBuffer.buffer, 0, sizeof(GPUObjectData) * MAX_OBJECTS);
+    }
+
+    // Build descriptor sets
+    // TODO: congregate into a single build
+    VkDescriptorSet cameraDescriptorSets[MAX_FRAMES_IN_FLIGHT];
+    globalDescriptorSetLayout = DescriptorSetBuilder::begin(device, *layoutCache, *descriptorSetAllocator, MAX_FRAMES_IN_FLIGHT)
+        .bindBuffers(cameraDescriptorInfos, MAX_FRAMES_IN_FLIGHT, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_VERTEX_BIT, 0)
+        .bindDuplicateBuffer(&sceneParamsDescriptorInfo, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 1)
+        .build(cameraDescriptorSets);
+
+    VkDescriptorSet objectDescriptorSets[MAX_FRAMES_IN_FLIGHT];
+    objectDescriptorSetLayout = DescriptorSetBuilder::begin(device, *layoutCache, *descriptorSetAllocator, MAX_FRAMES_IN_FLIGHT)
+        .bindBuffers(objectDescriptorInfos, MAX_FRAMES_IN_FLIGHT, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_VERTEX_BIT, 0)
+        .build(objectDescriptorSets);
+
+    // TODO: temporarily write back descriptor sets until frame data is redone to SOA
+    for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+        inFlightFrames[i].globalDescriptor = cameraDescriptorSets[i];
+        inFlightFrames[i].objectDescriptor = objectDescriptorSets[i]; 
+    }
+
+    // Build material descriptor layouts, descriptor allocation has to be deferred until after pipeline creation
+    VkDescriptorSetLayoutBinding textureBinding = descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, 0);
+    singleTextureDescriptorSetLayout = layoutCache->getLayout(&textureBinding, 1).value();
 
     deinitQueue.enqueue([=]() {
         LOG_CALL(
@@ -739,6 +693,7 @@ void VulkanBackend::initDescriptors() {
             }
             vmaDestroyBuffer(allocator, sceneParamsBuffers.buffer, sceneParamsBuffers.allocation); 
         );
+        LOG_CALL(layoutCache->deinit());
     });
 }
 
@@ -795,13 +750,13 @@ void VulkanBackend::initPipelines() {
 
     viewport.x = 0.f;
     viewport.y = 0.f;
-    viewport.width = 640.f;
-    viewport.height = 480.f;
+    viewport.width = 1920.f;
+    viewport.height = 1080.f;
     viewport.minDepth = 0.f;
     viewport.maxDepth = 1.f;
 
     scissor.offset = { 0, 0 };
-    scissor.extent = { 640, 480 };
+    scissor.extent = { 1920, 1080 };
 
     builder.rasterizer = rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL);
     builder.multisampling = multisampleStateCreateInfo();

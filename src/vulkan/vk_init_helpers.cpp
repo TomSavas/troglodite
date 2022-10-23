@@ -328,3 +328,21 @@ VkSemaphoreCreateInfo semaphoreCreateInfo(VkSemaphoreCreateFlags flags) {
 
     return info;
 }
+
+VkDescriptorBufferInfo descriptorBufferInfo(VkBuffer buffer, uint64_t offset, uint64_t range) {
+    VkDescriptorBufferInfo info = {};
+    info.buffer = buffer;
+    info.offset = offset;
+    info.range = range;
+
+    return info;
+}
+
+VkDescriptorImageInfo descriptorImageInfo(VkSampler sampler, VkImageView view, VkImageLayout layout) {
+    VkDescriptorImageInfo info = {};
+    info.sampler = sampler;
+    info.imageView = view;
+    info.imageLayout = layout;
+
+    return info;
+}

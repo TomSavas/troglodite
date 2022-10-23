@@ -86,6 +86,8 @@ struct FrameData {
     VkCommandBuffer cmdBuffer;
 };
 
+struct DescriptorSetLayoutCache;
+struct DescriptorSetAllocator;
 struct VulkanBackend { 
     static constexpr int MAX_FRAMES_IN_FLIGHT = 2;
     FrameData inFlightFrames[MAX_FRAMES_IN_FLIGHT];
@@ -144,6 +146,9 @@ struct VulkanBackend {
     int frameNumber;
 
     GLFWwindow* window;
+
+    DescriptorSetLayoutCache* layoutCache;
+    DescriptorSetAllocator* descriptorSetAllocator;
 
     // TODO: should be stored along with the descriptor set
     VkDescriptorSetLayout globalDescriptorSetLayout;
