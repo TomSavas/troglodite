@@ -38,7 +38,7 @@ target_link_libraries(${PROJECT} glm::glm)
 
 add_definitions(-DGLFW_INCLUDE_NONE)
 
-find_program(GLSL_VALIDATOR glslangValidator HINTS /usr/bin /usr/local/bin $ENV{VULKAN_SDK}/Bin/ $ENV{VULKAN_SDK}/Bin32/)
+find_program(GLSLC glslc HINTS /usr/bin /usr/local/bin $ENV{VULKAN_SDK}/Bin/ $ENV{VULKAN_SDK}/Bin32/)
 file(GLOB_RECURSE GLSL_SOURCE_FILES
     "${PROJECT_SOURCE_DIR}/src/shaders/*.glsl"
 )
@@ -49,11 +49,16 @@ file(MAKE_DIRECTORY "${SPV_MAKE_DIRECTORY}")
 foreach(GLSL ${GLSL_SOURCE_FILES})
     get_filename_component(FILE_NAME ${GLSL} NAME)
     set(SPIRV "${SPV_MAKE_DIRECTORY}/${FILE_NAME}.spv")
+
+    string(REGEX MATCH "\\.[^\.]*\\.glsl" SHADER_STAGE ${GLSL})
+    string(REGEX REPLACE "\\.glsl" "" SHADER_STAGE ${SHADER_STAGE})
+    string(REGEX REPLACE "\\." "" SHADER_STAGE ${SHADER_STAGE})
+
     add_custom_command(
         OUTPUT ${SPIRV}
-        COMMAND ${GLSL_VALIDATOR} -V ${GLSL} -o ${SPIRV}
+        COMMAND ${GLSLC} -fshader-stage=${SHADER_STAGE} ${GLSL} -o ${SPIRV}
         DEPENDS ${GLSL}
-        COMMENT "Compiling ${GLSL}"
+        COMMENT "Compiling ${GLSL} for stage: ${SHADER_STAGE}"
     )
     list(APPEND SPIRV_BINARY_FILES ${SPIRV})
 endforeach(GLSL)
