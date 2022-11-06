@@ -9,7 +9,7 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_FLAGS_DEBUG "-ggdb -O0 -DDEBUG -lvulkan -Wall")
 set(CMAKE_CXX_FLAGS_RELEASE "-O2 -lvulkan -Wall")
 
-file(GLOB_RECURSE SOURCES "src/*.cpp" "lib/imgui/*.cpp")
+file(GLOB_RECURSE SOURCES "src/*.cpp" "lib/imgui/*.cpp" "lib/SPIRV-Reflect/spirv_reflect.cpp")
 
 add_executable(${EXEC} ${SOURCES})
 target_include_directories(${PROJECT} PRIVATE src/)
@@ -17,6 +17,7 @@ target_include_directories(${PROJECT} PRIVATE lib/imgui)
 target_include_directories(${PROJECT} PRIVATE lib/tinygltf)
 target_include_directories(${PROJECT} PRIVATE lib/tinyobjloader)
 target_include_directories(${PROJECT} PRIVATE lib/stb_image)
+target_include_directories(${PROJECT} PRIVATE lib/SPIRV-Reflect)
 
 set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
 set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
