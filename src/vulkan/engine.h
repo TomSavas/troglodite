@@ -40,19 +40,6 @@ struct FunctionQueue {
     void execute();
 };
 
-struct VulkanPipelineBuilder {
-    std::vector<VkPipelineShaderStageCreateInfo> shaderStages;
-    VkPipelineVertexInputStateCreateInfo vertexInputInfo;
-    VkPipelineInputAssemblyStateCreateInfo inputAssembly;
-    VkPipelineRasterizationStateCreateInfo rasterizer;
-    VkPipelineColorBlendAttachmentState colorBlendAttachment;
-    VkPipelineMultisampleStateCreateInfo multisampling;
-    VkPipelineLayout pipelineLayout;
-    VkPipelineDepthStencilStateCreateInfo depthStencil;
-
-    VkPipeline build(VkDevice device, VkRenderPass pass, VkViewport* viewport, VkRect2D* scissor);
-};
-
 struct GPUCameraData {
     glm::mat4 view;
     glm::mat4 projection;
@@ -88,6 +75,9 @@ struct FrameData {
 
 struct DescriptorSetLayoutCache;
 struct DescriptorSetAllocator;
+struct ShaderModuleCache;
+struct ShaderPassCache;
+struct Materials;
 struct VulkanBackend { 
     static constexpr int MAX_FRAMES_IN_FLIGHT = 2;
     FrameData inFlightFrames[MAX_FRAMES_IN_FLIGHT];
@@ -147,8 +137,14 @@ struct VulkanBackend {
 
     GLFWwindow* window;
 
-    DescriptorSetLayoutCache* layoutCache;
+    DescriptorSetLayoutCache* descriptorSetLayoutCache;
     DescriptorSetAllocator* descriptorSetAllocator;
+
+    ShaderModuleCache* shaderModuleCache;
+    ShaderPassCache* shaderPassCache;
+
+    TextureCache* textureCache;
+    Materials* materials;
 
     // TODO: should be stored along with the descriptor set
     VkDescriptorSetLayout globalDescriptorSetLayout;

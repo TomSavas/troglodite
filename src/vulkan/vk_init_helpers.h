@@ -2,13 +2,19 @@
 
 #include <vulkan/vulkan.h>
 
+struct VertexInputDescription;
+struct ShaderStage;
+
 VkPipelineShaderStageCreateInfo shaderStageCreateInfo(VkShaderStageFlagBits stageFlags, VkShaderModule shaderModule);
+VkPipelineShaderStageCreateInfo shaderStageCreateInfo(ShaderStage& shaderStage);
 VkPipelineVertexInputStateCreateInfo vertexInputStateCreateInfo();
+VkPipelineVertexInputStateCreateInfo vertexInputStateCreateInfo(VertexInputDescription& description);
 VkPipelineInputAssemblyStateCreateInfo inputAssemblyCreateInfo(VkPrimitiveTopology topology);
 VkPipelineRasterizationStateCreateInfo rasterizationStateCreateInfo(VkPolygonMode polygonMode);
 VkPipelineMultisampleStateCreateInfo multisampleStateCreateInfo();
 VkPipelineColorBlendAttachmentState colorBlendAttachmentState();
 VkPipelineLayoutCreateInfo layoutCreateInfo();
+VkPipelineLayoutCreateInfo layoutCreateInfo(VkDescriptorSetLayout* descriptorSetLayouts, uint32_t descriptorSetLayoutCount);
 
 VkImageCreateInfo imageCreateInfo(VkFormat format, VkImageUsageFlags usageFlags, VkExtent3D extent);
 VkImageViewCreateInfo imageViewCreateInfo(VkFormat format, VkImage image, VkImageAspectFlags aspectFlags);

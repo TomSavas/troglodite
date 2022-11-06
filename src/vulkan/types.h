@@ -4,7 +4,7 @@
 #include <vk_mem_alloc.h>
 #include <glm/glm.hpp>
 
-struct Material {
+struct TEMPMaterial {
     VkDescriptorSet textureSet {VK_NULL_HANDLE};
     VkPipeline pipeline;
     VkPipelineLayout pipelineLayout;
@@ -13,7 +13,7 @@ struct Material {
 struct Mesh;
 struct RenderObject {
     Mesh* mesh;
-    Material* material;
+    TEMPMaterial* material;
     glm::mat4 modelMatrix;
 };
 
@@ -25,4 +25,5 @@ struct AllocatedBuffer {
 struct AllocatedImage {
     VkImage image;
     VmaAllocation allocation;
+    VkExtent3D extent;
 };

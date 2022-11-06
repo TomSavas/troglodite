@@ -7,32 +7,32 @@
 #include "mesh.h"
 #include "scene.h"
 
-Material* Scene::createMaterial(VkPipeline pipeline, VkPipelineLayout layout, const std::string& name) {
-    materials[name] = Material { VK_NULL_HANDLE, pipeline, layout };
+TEMPMaterial* Scene::createMaterial(VkPipeline pipeline, VkPipelineLayout layout, const std::string& name) {
+    materials[name] = TEMPMaterial { VK_NULL_HANDLE, pipeline, layout };
     return &materials[name];
 }
 
 void Scene::initTestScene() {
     RenderObject suzanne;
-    //suzanne.mesh = &meshes["suzanne"];
-    suzanne.mesh = &meshes["lostEmpire"];
+    suzanne.mesh = &meshes["suzanne"];
+    //suzanne.mesh = &meshes["lostEmpire"];
     suzanne.material = &materials["defaultMaterial"];
     suzanne.modelMatrix = glm::translate(glm::vec3(5.f, -10.f, 0.f));
 
     renderables.push_back(suzanne);
 
-    for (int x = -20; x <= 20; x++) {
-        for (int y = -20; y <= 20; y++) {
-            RenderObject tri;
-            tri.mesh = &meshes["triangle"];
-            tri.material = &materials["defaultMaterial"];
-            glm::mat4 translation = glm::translate(glm::mat4{ 1.0 }, glm::vec3(x, 0, y));
-            glm::mat4 scale = glm::scale(glm::mat4{ 1.0 }, glm::vec3(0.2, 0.2, 0.2));
-            tri.modelMatrix = translation * scale;
+    //for (int x = -20; x <= 20; x++) {
+    //    for (int y = -20; y <= 20; y++) {
+    //        RenderObject tri;
+    //        tri.mesh = &meshes["triangle"];
+    //        tri.material = &materials["defaultMaterial"];
+    //        glm::mat4 translation = glm::translate(glm::mat4{ 1.0 }, glm::vec3(x, 0, y));
+    //        glm::mat4 scale = glm::scale(glm::mat4{ 1.0 }, glm::vec3(0.2, 0.2, 0.2));
+    //        tri.modelMatrix = translation * scale;
 
-            renderables.push_back(tri);
-        }
-    }
+    //        renderables.push_back(tri);
+    //    }
+    //}
 }
 
 glm::vec3 right(glm::mat4 mat) {
@@ -111,7 +111,7 @@ void Scene::draw(VulkanBackend& backend, VkCommandBuffer cmd, FrameData& frameDa
     }
 
     glm::mat4 view = glm::lookAt(mainCamera.pos, mainCamera.pos + forward(mainCamera.rotation), up(mainCamera.rotation));
-    glm::mat4 projection = glm::perspective(glm::radians(70.f), 1700.f / 900.f, 0.1f, 200.f);
+    glm::mat4 projection = glm::perspective(glm::radians(70.f), 1700.f / 900.f, 0.1f, 20000.f);
     projection[1][1] *= -1; 
 
     GPUCameraData cameraData;
@@ -137,7 +137,7 @@ void Scene::draw(VulkanBackend& backend, VkCommandBuffer cmd, FrameData& frameDa
     }
 
     Mesh* lastMesh = nullptr;
-    Material* lastMaterial = nullptr;
+    TEMPMaterial* lastMaterial = nullptr;
     for (size_t i = 0; i < renderables.size(); i++) {
         RenderObject& renderable = renderables[i];
         if (renderable.material == nullptr || renderable.mesh == nullptr) {

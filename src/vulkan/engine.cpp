@@ -4,7 +4,6 @@
 #include <glm/gtx/transform.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
-#define VMA_IMPLEMENTATION
 #include <vk_mem_alloc.h>
 #include <vulkan/vulkan.h>
 
@@ -17,6 +16,8 @@
 #include "vulkan/mesh.h"
 #include "vulkan/vk_shader.h"
 #include "vulkan/vk_init_helpers.h"
+#include "vulkan/pipeline_builder.h"
+#include "vulkan/material.h"
 
 #define LOG_CALL(code) do {                                      \
         std::cout << "Calling: " #code << std::endl; \
@@ -33,45 +34,6 @@ void FunctionQueue::execute() {
         func();
     }
     functions.clear();
-}
-
-VkPipeline VulkanPipelineBuilder::build(VkDevice device, VkRenderPass pass, VkViewport* viewport, VkRect2D* scissor) {
-    VkPipelineViewportStateCreateInfo viewportState = pipelineViewportState(1, viewport, 1, scissor);
-
-    VkPipelineColorBlendStateCreateInfo colorBlending = pipelineColorBlendState(false, VK_LOGIC_OP_COPY, 1, &colorBlendAttachment);
-
-    VkDynamicState dynamicStates[] = { VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR };
-    VkPipelineDynamicStateCreateInfo dynamicState = {};
-    dynamicState.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
-    dynamicState.pNext = nullptr;
-    dynamicState.dynamicStateCount = 2;
-    dynamicState.pDynamicStates = dynamicStates;
-
-    VkGraphicsPipelineCreateInfo pipelineInfo = {};
-    pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
-    pipelineInfo.pNext = nullptr;
-
-    pipelineInfo.stageCount = shaderStages.size();
-    pipelineInfo.pStages = shaderStages.data();
-    pipelineInfo.pVertexInputState = &vertexInputInfo;
-    pipelineInfo.pInputAssemblyState = &inputAssembly;
-    pipelineInfo.pViewportState = &viewportState;
-    pipelineInfo.pRasterizationState = &rasterizer;
-    pipelineInfo.pMultisampleState = &multisampling;
-    pipelineInfo.pColorBlendState = &colorBlending; // TODO change
-    pipelineInfo.pDynamicState = &dynamicState;
-    pipelineInfo.pDepthStencilState = &depthStencil;
-    pipelineInfo.layout = pipelineLayout;
-    pipelineInfo.renderPass = pass;
-    pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;
-
-    VkPipeline pipeline = {};
-    if (vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &pipeline) != VK_SUCCESS) {
-        printf("Failed creating graphics pipeline\n");
-        return VK_NULL_HANDLE;
-    }
-
-    return pipeline;
 }
 
 /*static*/ void VulkanBackend::framebufferResizeCallback(GLFWwindow* window, int width, int height) {
@@ -102,6 +64,17 @@ VkExtent3D glfwFramebufferSize(GLFWwindow* window) {
 
     backend.viewportSize = glfwFramebufferSize(window);
 
+    // TODO: bad place for this -- move
+    backend.viewport.x = 0.f;
+    backend.viewport.y = 0.f;
+    backend.viewport.width = 1920.f;
+    backend.viewport.height = 1080.f;
+    backend.viewport.minDepth = 0.f;
+    backend.viewport.maxDepth = 1.f;
+
+    backend.scissor.offset = { 0, 0 };
+    backend.scissor.extent = { 1920, 1080 };
+
     backend.initVulkan();
     backend.initSwapchain();
     backend.initCommandBuffers();
@@ -122,15 +95,15 @@ VkExtent3D glfwFramebufferSize(GLFWwindow* window) {
 void VulkanBackend::loadMeshes() {
     // TODO: get rid of copying
     Mesh suzanneMesh;
-    suzanneMesh.loadFromObj("/home/savas/Projects/ignoramus_renderer/assets/suzanne.obj");
-    //suzanneMesh.loadFromObj("/home/savas/Projects/ignoramus_renderer/assets/sponza/sponza.obj");
+    //suzanneMesh.loadFromObj("/home/savas/Projects/ignoramus_renderer/assets/suzanne.obj");
+    suzanneMesh.loadFromObj("/home/savas/Projects/ignoramus_renderer/assets/sponza/sponza.obj");
     scene.meshes["suzanne"] = suzanneMesh;
     uploadMesh(scene.meshes["suzanne"]);
 
-    Mesh lostEmpireMesh;
-    lostEmpireMesh.loadFromObj("/home/savas/Projects/troglodite/assets/lost_empire/lost_empire.obj");
-    scene.meshes["lostEmpire"] = lostEmpireMesh;
-    uploadMesh(scene.meshes["lostEmpire"]);
+    //Mesh lostEmpireMesh;
+    //lostEmpireMesh.loadFromObj("/home/savas/Projects/troglodite/assets/lost_empire/lost_empire.obj");
+    //scene.meshes["lostEmpire"] = lostEmpireMesh;
+    //uploadMesh(scene.meshes["lostEmpire"]);
 
     Mesh triangleMesh;
     triangleMesh.vertices.resize(3);
@@ -145,11 +118,21 @@ void VulkanBackend::loadMeshes() {
 }
 
 void VulkanBackend::loadTextures() {
+    textureCache = new TextureCache(*this);
+
     Texture lostEmpire;
-    loadFromFile(*this, "/home/savas/Projects/troglodite/assets/lost_empire/lost_empire-RGBA.png", lostEmpire.image);
+    //loadFromFile(*this, "/home/savas/Projects/troglodite/assets/lost_empire/lost_empire-RGBA.png", lostEmpire.image);
+    loadFromFile(*this, "/home/savas/Projects/ignoramus_renderer/assets/textures/default.jpeg", lostEmpire.image);
+
+    //TextureCache::LoadResult textureResult = textureCache->load("/home/savas/Projects/ignoramus_renderer/assets/textures/default.jpeg");
+    //if (!textureResult.success) {
+    //    return;
+    //}
+    //Texture lostEmpire = *textureResult.texture;
 
     VkImageViewCreateInfo imageViewInfo = imageViewCreateInfo(VK_FORMAT_R8G8B8A8_SRGB, lostEmpire.image.image, VK_IMAGE_ASPECT_COLOR_BIT);
     vkCreateImageView(device, &imageViewInfo, nullptr, &lostEmpire.view);
+    //scene.textures["lost_empire_diffuse"] = *textureResult.texture;
     scene.textures["lost_empire_diffuse"] = lostEmpire;
 
     deinitQueue.enqueue([&]() {
@@ -168,7 +151,7 @@ void VulkanBackend::loadTextures() {
 
     VkDescriptorSetAllocateInfo setAllocInfo = descriptorSetAllocate(descriptorPool, 1, &singleTextureDescriptorSetLayout);
 
-    Material* mat = &scene.materials["defaultMaterial"];
+    TEMPMaterial* mat = &scene.materials["defaultMaterial"];
     vkAllocateDescriptorSets(device, &setAllocInfo, &mat->textureSet);
 
     VkDescriptorImageInfo imageDescriptorInfo = {};
@@ -641,7 +624,7 @@ void VulkanBackend::initDescriptors() {
         LOG_CALL(vkDestroyDescriptorPool(device, descriptorPool, nullptr));
     });
 
-    layoutCache = new DescriptorSetLayoutCache(device);
+    descriptorSetLayoutCache = new DescriptorSetLayoutCache(device);
     descriptorSetAllocator = new DescriptorSetAllocator(device, descriptorPool);
 
     const int MAX_OBJECTS = 10000;
@@ -665,13 +648,13 @@ void VulkanBackend::initDescriptors() {
     // Build descriptor sets
     // TODO: congregate into a single build
     VkDescriptorSet cameraDescriptorSets[MAX_FRAMES_IN_FLIGHT];
-    globalDescriptorSetLayout = DescriptorSetBuilder::begin(device, *layoutCache, *descriptorSetAllocator, MAX_FRAMES_IN_FLIGHT)
+    globalDescriptorSetLayout = DescriptorSetBuilder::begin(device, *descriptorSetLayoutCache, *descriptorSetAllocator, MAX_FRAMES_IN_FLIGHT)
         .bindBuffers(cameraDescriptorInfos, MAX_FRAMES_IN_FLIGHT, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_VERTEX_BIT, 0)
         .bindDuplicateBuffer(&sceneParamsDescriptorInfo, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 1)
         .build(cameraDescriptorSets);
 
     VkDescriptorSet objectDescriptorSets[MAX_FRAMES_IN_FLIGHT];
-    objectDescriptorSetLayout = DescriptorSetBuilder::begin(device, *layoutCache, *descriptorSetAllocator, MAX_FRAMES_IN_FLIGHT)
+    objectDescriptorSetLayout = DescriptorSetBuilder::begin(device, *descriptorSetLayoutCache, *descriptorSetAllocator, MAX_FRAMES_IN_FLIGHT)
         .bindBuffers(objectDescriptorInfos, MAX_FRAMES_IN_FLIGHT, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_VERTEX_BIT, 0)
         .build(objectDescriptorSets);
 
@@ -683,7 +666,7 @@ void VulkanBackend::initDescriptors() {
 
     // Build material descriptor layouts, descriptor allocation has to be deferred until after pipeline creation
     VkDescriptorSetLayoutBinding textureBinding = descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, 0);
-    singleTextureDescriptorSetLayout = layoutCache->getLayout(&textureBinding, 1).value();
+    singleTextureDescriptorSetLayout = descriptorSetLayoutCache->getLayout(&textureBinding, 1).value();
 
     deinitQueue.enqueue([=]() {
         LOG_CALL(
@@ -693,7 +676,7 @@ void VulkanBackend::initDescriptors() {
             }
             vmaDestroyBuffer(allocator, sceneParamsBuffers.buffer, sceneParamsBuffers.allocation); 
         );
-        LOG_CALL(layoutCache->deinit());
+        LOG_CALL(descriptorSetLayoutCache->deinit());
     });
 }
 
@@ -719,21 +702,71 @@ void VulkanBackend::initPipelines() {
         LOG_CALL(vkDestroyPipelineLayout(device, pipelineLayout, nullptr));
     });
 
-    VkShaderModule triangleVert;
-    if (!loadShaderModule("./shaders/tri.vert.glsl.spv", device, &triangleVert)) {
-        printf("Failed building triangle vert shader.\n");
+    shaderModuleCache = new ShaderModuleCache(device);
+    shaderPassCache = new ShaderPassCache(device, *shaderModuleCache, *descriptorSetLayoutCache);
+    materials = new Materials(*shaderPassCache);
+
+    PipelineBuilder forwardPipelineBuilder;
+    VertexInputDescription vertexDescription = Vertex::getVertexDescription();
+    forwardPipelineBuilder.vertexInputInfo = vertexInputStateCreateInfo(vertexDescription);
+    forwardPipelineBuilder.inputAssembly = inputAssemblyCreateInfo(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+    forwardPipelineBuilder.rasterizer = rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL);
+    forwardPipelineBuilder.multisampling = multisampleStateCreateInfo();
+    forwardPipelineBuilder.colorBlendAttachment = colorBlendAttachmentState();
+    forwardPipelineBuilder.depthStencil = depthStencilCreateInfo(true, true, VK_COMPARE_OP_LESS_OR_EQUAL);
+
+    // TODO: add error material
+
+    //ShaderPassCache::LoadResult csmPassResult = shaderPassCache->load(ShaderPassCache::ShaderStageCreateInfos({
+    //    ShaderPassCache::ShaderStageCreateInfo(SHADER_PATH("model_transform.vert.glsl"), VK_SHADER_STAGE_VERTEX_BIT),
+    //    ShaderPassCache::ShaderStageCreateInfo(SHADER_PATH("csm_gen_lightspace_transforms.geom.glsl"), VK_SHADER_STAGE_GEOMETRY_BIT),
+    //    ShaderPassCache::ShaderStageCreateInfo(SHADER_PATH("empty.frag.glsl"), VK_SHADER_STAGE_FRAGMENT_BIT),
+    //}));
+    CacheLoadResult<ShaderPassInfo> forwardLitPassInfoResult = shaderPassCache->loadInfo(ShaderPassCache::ShaderStageCreateInfos({
+        //ShaderPassCache::ShaderStageCreateInfo(SHADER_PATH("mvp_transform.vert.glsl"), VK_SHADER_STAGE_VERTEX_BIT),
+        //ShaderPassCache::ShaderStageCreateInfo(SHADER_PATH("forward_lit.frag.glsl"), VK_SHADER_STAGE_FRAGMENT_BIT),
+        ShaderPassCache::ShaderStageCreateInfo(SHADER_PATH("tri.vert.glsl"), VK_SHADER_STAGE_VERTEX_BIT),
+        ShaderPassCache::ShaderStageCreateInfo(SHADER_PATH("triangle.frag.glsl"), VK_SHADER_STAGE_FRAGMENT_BIT),
+    }));
+
+    if (/*csmPassResult.success && */forwardLitPassInfoResult.success) {
+        materials->enqueue(std::move(MaterialBuilder::begin(Materials::DEFAULT_LIT)
+            //.addPass(PassType::DIRECTIONAL_SHADOW, csmPassResult.pass, shadowPipelineBuilder, shadowRenderpass)
+            .addPass(PassType::FORWARD_OPAQUE, forwardLitPassInfoResult.data, forwardPipelineBuilder, /*forwardRenderpass*/defaultRenderpass, viewport, scissor)
+        ));
     } else {
-        printf("Built triangle vert shader.\n");
+        printf("Failed creating material \"%s\" - failed retrieving shaders\n", Materials::DEFAULT_LIT);
     }
 
-    VkShaderModule triangleFrag;
-    if (!loadShaderModule("./shaders/triangle.frag.glsl.spv", device, &triangleFrag)) {
-        printf("Failed building triangle frag shader.\n");
-    } else {
-        printf("Built triangle frag shader.\n");
-    }
+    // TODO: redo materials internals to support SoA for usage with vkCreateGraphicsPipelines
+    materials->buildQueued();
 
-    VulkanPipelineBuilder builder;
+    //VkShaderModule triangleVert = materials->materials[Materials::DEFAULT_LIT].perPassShaders[static_cast<size_t>(PassType::FORWARD_OPAQUE)]->info->stages[0].module->module;
+    //VkShaderModule triangleFrag = materials->materials[Materials::DEFAULT_LIT].perPassShaders[static_cast<size_t>(PassType::FORWARD_OPAQUE)]->info->stages[1].module->module;
+
+    VkShaderModule triangleVert = forwardLitPassInfoResult.data->stages[0].module->module;
+    VkShaderModule triangleFrag = forwardLitPassInfoResult.data->stages[1].module->module;
+
+    //ShaderModuleCache::LoadResult triangleVertShaderResult = shaderModuleCache->load(SHADER_PATH("tri.vert.glsl"));
+    //if (!triangleVertShaderResult.success) {
+    //    printf("Failed building triangle frag shader.\n");
+    //}
+    //VkShaderModule triangleVert = triangleVertShaderResult.module->module;
+
+    //ShaderModuleCache::LoadResult triangleFragShaderResult = shaderModuleCache->load(SHADER_PATH("triangle.frag.glsl"));
+    //if (!triangleFragShaderResult.success) {
+    //    printf("Failed building triangle frag shader.\n");
+    //}
+    //VkShaderModule triangleFrag = triangleFragShaderResult.module->module;
+
+    //ShaderPassCache::LoadResult pass = shaderPassCache->load(ShaderPassCache::ShaderStageCreateInfos({
+    //    ShaderPassCache::ShaderStageCreateInfo(SHADER_PATH("tri.vert.glsl"), VK_SHADER_STAGE_VERTEX_BIT),
+    //    ShaderPassCache::ShaderStageCreateInfo(SHADER_PATH("triangle.frag.glsl"), VK_SHADER_STAGE_FRAGMENT_BIT),
+    //}));
+    //VkShaderModule triangleVert = pass.pass->info.stages[0].module->module;
+    //VkShaderModule triangleFrag = pass.pass->info.stages[1].module->module;
+
+    PipelineBuilder builder;
 
     builder.shaderStages.push_back(shaderStageCreateInfo(VK_SHADER_STAGE_VERTEX_BIT, triangleVert));
     builder.shaderStages.push_back(shaderStageCreateInfo(VK_SHADER_STAGE_FRAGMENT_BIT, triangleFrag));
@@ -748,23 +781,13 @@ void VulkanBackend::initPipelines() {
 
     builder.inputAssembly = inputAssemblyCreateInfo(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
 
-    viewport.x = 0.f;
-    viewport.y = 0.f;
-    viewport.width = 1920.f;
-    viewport.height = 1080.f;
-    viewport.minDepth = 0.f;
-    viewport.maxDepth = 1.f;
-
-    scissor.offset = { 0, 0 };
-    scissor.extent = { 1920, 1080 };
-
     builder.rasterizer = rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL);
     builder.multisampling = multisampleStateCreateInfo();
     builder.colorBlendAttachment = colorBlendAttachmentState();
     builder.depthStencil = depthStencilCreateInfo(true, true, VK_COMPARE_OP_LESS_OR_EQUAL);
     builder.pipelineLayout = pipelineLayout;
 
-    pipeline = builder.build(device, defaultRenderpass, &viewport, &scissor);
+    pipeline = builder.build(device, defaultRenderpass, &viewport, &scissor, pipelineLayout);
     scene.createMaterial(pipeline, pipelineLayout, "defaultMaterial");
 
     deinitQueue.enqueue([=]() {

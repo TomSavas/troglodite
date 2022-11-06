@@ -28,11 +28,11 @@ struct Scene {
 
     std::vector<RenderObject> renderables;
 
-    std::unordered_map<std::string, Material> materials;
+    std::unordered_map<std::string, TEMPMaterial> materials;
     std::unordered_map<std::string, Mesh> meshes;
     std::unordered_map<std::string, Texture> textures;
 
-    Material* createMaterial(VkPipeline pipeline, VkPipelineLayout layout, const std::string& name);
+    TEMPMaterial* createMaterial(VkPipeline pipeline, VkPipelineLayout layout, const std::string& name);
 
     void initTestScene();
     void update(VulkanBackend& backend, float dt);

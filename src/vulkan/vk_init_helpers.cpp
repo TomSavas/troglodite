@@ -1,5 +1,8 @@
 #include "vulkan/vk_init_helpers.h"
 
+#include "vulkan/mesh.h"
+#include "vulkan/vk_shader.h"
+
 VkPipelineShaderStageCreateInfo shaderStageCreateInfo(VkShaderStageFlagBits stageFlags, VkShaderModule shaderModule) {
     VkPipelineShaderStageCreateInfo info = {};
     info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
@@ -12,6 +15,10 @@ VkPipelineShaderStageCreateInfo shaderStageCreateInfo(VkShaderStageFlagBits stag
     return info;
 }
 
+VkPipelineShaderStageCreateInfo shaderStageCreateInfo(ShaderStage& shaderStage) {
+    return shaderStageCreateInfo(shaderStage.flags, shaderStage.module->module);
+}
+
 VkPipelineVertexInputStateCreateInfo vertexInputStateCreateInfo() {
     VkPipelineVertexInputStateCreateInfo info = {};   
     info.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
@@ -19,6 +26,17 @@ VkPipelineVertexInputStateCreateInfo vertexInputStateCreateInfo() {
 
     info.vertexBindingDescriptionCount = 0;
     info.vertexAttributeDescriptionCount = 0;
+
+    return info;
+}
+
+VkPipelineVertexInputStateCreateInfo vertexInputStateCreateInfo(VertexInputDescription& description) {
+    VkPipelineVertexInputStateCreateInfo info = vertexInputStateCreateInfo();
+
+    info.pVertexBindingDescriptions = description.bindings.data();
+    info.vertexBindingDescriptionCount = description.bindings.size();
+    info.pVertexAttributeDescriptions = description.attributes.data();
+    info.vertexAttributeDescriptionCount = description.attributes.size();
 
     return info;
 }
@@ -96,6 +114,15 @@ VkPipelineLayoutCreateInfo layoutCreateInfo() {
     info.pSetLayouts = nullptr;
     info.pushConstantRangeCount = 0;
     info.pPushConstantRanges = nullptr;
+
+    return info;
+}
+
+VkPipelineLayoutCreateInfo layoutCreateInfo(VkDescriptorSetLayout* descriptorSetLayouts, uint32_t descriptorSetLayoutCount) {
+    VkPipelineLayoutCreateInfo info = layoutCreateInfo();
+
+    info.setLayoutCount = descriptorSetLayoutCount;
+    info.pSetLayouts = descriptorSetLayouts;
 
     return info;
 }
