@@ -747,25 +747,6 @@ void VulkanBackend::initPipelines() {
     VkShaderModule triangleVert = forwardLitPassInfoResult.data->stages[0].module->module;
     VkShaderModule triangleFrag = forwardLitPassInfoResult.data->stages[1].module->module;
 
-    //ShaderModuleCache::LoadResult triangleVertShaderResult = shaderModuleCache->load(SHADER_PATH("tri.vert.glsl"));
-    //if (!triangleVertShaderResult.success) {
-    //    printf("Failed building triangle frag shader.\n");
-    //}
-    //VkShaderModule triangleVert = triangleVertShaderResult.module->module;
-
-    //ShaderModuleCache::LoadResult triangleFragShaderResult = shaderModuleCache->load(SHADER_PATH("triangle.frag.glsl"));
-    //if (!triangleFragShaderResult.success) {
-    //    printf("Failed building triangle frag shader.\n");
-    //}
-    //VkShaderModule triangleFrag = triangleFragShaderResult.module->module;
-
-    //ShaderPassCache::LoadResult pass = shaderPassCache->load(ShaderPassCache::ShaderStageCreateInfos({
-    //    ShaderPassCache::ShaderStageCreateInfo(SHADER_PATH("tri.vert.glsl"), VK_SHADER_STAGE_VERTEX_BIT),
-    //    ShaderPassCache::ShaderStageCreateInfo(SHADER_PATH("triangle.frag.glsl"), VK_SHADER_STAGE_FRAGMENT_BIT),
-    //}));
-    //VkShaderModule triangleVert = pass.pass->info.stages[0].module->module;
-    //VkShaderModule triangleFrag = pass.pass->info.stages[1].module->module;
-
     PipelineBuilder builder;
 
     builder.shaderStages.push_back(shaderStageCreateInfo(VK_SHADER_STAGE_VERTEX_BIT, triangleVert));

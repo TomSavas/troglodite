@@ -65,6 +65,16 @@ struct ShaderModuleCache {
     CacheLoadResult<ShaderModule> load(ShaderPath path);
 };
 
+
+struct ReflectedBinding {
+    // Bindings might have multiple names if merged from different shaders
+    std::vector<std::string> names;
+    VkDescriptorSetLayoutBinding binding;
+
+    ReflectedBinding(std::string name, VkDescriptorSetLayoutBinding binding) : names({ name }), binding(binding) {}
+    ReflectedBinding(std::vector<std::string> names, VkDescriptorSetLayoutBinding binding) : names(names), binding(binding) {}
+};
+
 struct ShaderPassInfo {
     //std::vector<> descriptorSetLayouts;
     //std::vector<DescriptorBinding> bindings;
@@ -73,7 +83,7 @@ struct ShaderPassInfo {
 
     struct DescriptorSetLayout {
         VkDescriptorSetLayout layout;
-        std::vector<VkDescriptorSetLayoutBinding> bindings;
+        std::vector<ReflectedBinding> bindings;
     };
     std::vector<DescriptorSetLayout> descriptorSetLayouts;
     std::vector<VkPushConstantRange> pushConstants;

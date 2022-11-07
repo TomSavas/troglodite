@@ -81,7 +81,7 @@ CacheLoadResult<ShaderPassInfo> ShaderPassCache::loadInfo(ShaderStageCreateInfos
 
     // Generate pipeline layout from reflected shader info
     struct ReflectedSetLayout {
-        std::vector<VkDescriptorSetLayoutBinding> bindings;
+        std::vector<ReflectedBinding> bindings;
         uint8_t setIndex;
     };
     std::vector<ReflectedSetLayout> reflectedSetLayouts;
@@ -123,7 +123,7 @@ CacheLoadResult<ShaderPassInfo> ShaderPassCache::loadInfo(ShaderStageCreateInfos
                 for (uint32_t dimIdx = 0; dimIdx < reflectedBinding->array.dims_count; ++dimIdx) {
                     binding.descriptorCount *= reflectedBinding->array.dims[dimIdx];
                 }
-                setLayout.bindings.push_back(binding);
+                setLayout.bindings.push_back(ReflectedBinding(std::string(reflectedBinding->name), binding));
             }
 
             // TODO: Push constants
@@ -137,7 +137,7 @@ CacheLoadResult<ShaderPassInfo> ShaderPassCache::loadInfo(ShaderStageCreateInfos
     // sets with matching indices into a single set description
     std::vector<VkDescriptorSetLayout> mergedSetLayouts;
     for (uint32_t setIdx = 0; setIdx < MAX_ALLOWED_DESCRIPTOR_SETS; ++setIdx) {
-        std::vector<VkDescriptorSetLayoutBinding> mergedBindings;
+        std::vector<ReflectedBinding> mergedBindings;
         for (ReflectedSetLayout& reflectedLayout : reflectedSetLayouts) {
             if (setIdx != reflectedLayout.setIndex) {
                 continue;
@@ -145,15 +145,18 @@ CacheLoadResult<ShaderPassInfo> ShaderPassCache::loadInfo(ShaderStageCreateInfos
 
             // TODO: binary search or a map for a faster lookup, n^2 is good for now
             // perhaps an insertion sort would be nice
-            for (VkDescriptorSetLayoutBinding& reflectedBinding : reflectedLayout.bindings) {
+            for (ReflectedBinding& reflectedBinding : reflectedLayout.bindings) {
                 bool alreadyMerged = false;
-                for (VkDescriptorSetLayoutBinding& mergedBinding : mergedBindings) {
-                    if (reflectedBinding.binding != mergedBinding.binding) {
+                for (ReflectedBinding& mergedBinding : mergedBindings) {
+                    if (reflectedBinding.binding.binding != mergedBinding.binding.binding) {
                         continue;
                     }
                     
                     alreadyMerged = true;
-                    mergedBinding.stageFlags |= static_cast<VkShaderStageFlagBits>(reflectedBinding.stageFlags);
+                    mergedBinding.binding.stageFlags |= static_cast<VkShaderStageFlagBits>(reflectedBinding.binding.stageFlags);
+                    mergedBinding.names.insert(mergedBinding.names.end(),
+                        std::make_move_iterator(reflectedBinding.names.begin()),
+                        std::make_move_iterator(reflectedBinding.names.end()));
                 }
 
                 if (!alreadyMerged) {
@@ -162,12 +165,17 @@ CacheLoadResult<ShaderPassInfo> ShaderPassCache::loadInfo(ShaderStageCreateInfos
             }
         }
 
+        VkDescriptorSetLayoutBinding* linearBindings = (VkDescriptorSetLayoutBinding*) alloca(sizeof(VkDescriptorSetLayoutBinding) * mergedBindings.size());
+        for (size_t i = 0; i < mergedBindings.size(); ++i) {
+            linearBindings[i] = mergedBindings[i].binding;
+        }
+
         // TODO: add flags?
-        std::optional<VkDescriptorSetLayout> setLayout = descriptorSetLayoutCache.getLayout(mergedBindings.data(), mergedBindings.size());
+        std::optional<VkDescriptorSetLayout> setLayout = descriptorSetLayoutCache.getLayout(linearBindings, mergedBindings.size());
         if (setLayout && setLayout.value() != VK_NULL_HANDLE) {
             mergedSetLayouts.push_back(setLayout.value());
         }
-        passInfo.descriptorSetLayouts.push_back(ShaderPassInfo::DescriptorSetLayout{ setLayout.value(), mergedBindings });
+        passInfo.descriptorSetLayouts.push_back(ShaderPassInfo::DescriptorSetLayout{ setLayout.value(), std::move(mergedBindings) });
     }
 
     // TODO: there should be a pipeline cache. I believe VK has a built-in one?
@@ -186,6 +194,7 @@ CacheLoadResult<ShaderPass> ShaderPassCache::loadPass(PassBuildingMaterials& pas
     printf("Loading new pass 0x%lx\n", passBuildingMaterials.info->hash());
 
     ShaderPass& pass = passCache[*passBuildingMaterials.info];
+    pass.info = passBuildingMaterials.info;
     pass.pipeline = passBuildingMaterials.pipelineBuilder.build(device, passBuildingMaterials.renderpass,
         &passBuildingMaterials.viewport, &passBuildingMaterials.scissor, passBuildingMaterials.info->layout);
 
