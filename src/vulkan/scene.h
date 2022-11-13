@@ -6,6 +6,7 @@
 
 #include "types.h"
 #include "texture.h"
+#include "material.h"
 
 struct Camera {
     glm::vec3 pos;
@@ -21,10 +22,27 @@ struct Camera {
     float horizontalRotationSpeed = 0.005f;
 };
 
+struct MeshInstance {
+    Mesh mesh;
+    std::vector<uint32_t> objectDataIndices;
+};
+
+struct ObjectData {
+    glm::vec3 position;
+    glm::vec3 scale;
+    glm::mat4 rotation;
+};
+
 struct VulkanBackend;
 struct FrameData;
+struct Material;
 struct Scene {
+    VulkanBackend* backend;
     Camera mainCamera;
+
+    std::vector<Material*> passMaterials[static_cast<size_t>(PassType::PASS_COUNT)];
+    std::vector<MeshInstance> meshInstances;
+    std::vector<ObjectData> objectData;
 
     std::vector<RenderObject> renderables;
 
@@ -34,7 +52,17 @@ struct Scene {
 
     TEMPMaterial* createMaterial(VkPipeline pipeline, VkPipelineLayout layout, const std::string& name);
 
+    Scene(VulkanBackend* backend = nullptr) : backend(backend) {}
     void initTestScene();
-    void update(VulkanBackend& backend, float dt);
-    void draw(VulkanBackend& backend, VkCommandBuffer cmd, FrameData& frameData);
+
+    struct Object {
+        std::string materialName;
+        std::vector<uint32_t> materialInstanceIndices;
+        std::vector<uint32_t> meshInstanceIndices;
+        uint32_t objectDataIndex;
+    };
+    Object addObject(std::string meshName, std::string materialDir, bool separateMaterialInstances = false);
+    
+    void update(float dt);
+    void draw(VkCommandBuffer cmd, FrameData& frameData);
 };

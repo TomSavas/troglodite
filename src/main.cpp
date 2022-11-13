@@ -28,8 +28,9 @@ int main(void) {
     VulkanBackend backend = VulkanBackend::init(window);
     backend.registerCallbacks();
     
-    backend.scene.initTestScene();
-    backend.scene.mainCamera.pos = { 0.f, 6.f, 10.f };
+    backend.scene->backend = &backend;
+    backend.scene->initTestScene();
+    backend.scene->mainCamera.pos = { 0.f, 6.f, 10.f };
 
     auto start = std::chrono::high_resolution_clock::now();
     auto end = std::chrono::high_resolution_clock::now();
@@ -41,7 +42,7 @@ int main(void) {
 
         glfwPollEvents();
 
-        backend.scene.update(backend, dt);
+        backend.scene->update(dt);
         {
             ImGui_ImplVulkan_NewFrame();
             ImGui_ImplGlfw_NewFrame();

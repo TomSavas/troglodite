@@ -61,6 +61,7 @@ VkExtent3D glfwFramebufferSize(GLFWwindow* window) {
 /*static*/ VulkanBackend VulkanBackend::init(GLFWwindow* window) {
     VulkanBackend backend;
     backend.window = window;
+    backend.scene = new Scene();
 
     backend.viewportSize = glfwFramebufferSize(window);
 
@@ -95,15 +96,15 @@ VkExtent3D glfwFramebufferSize(GLFWwindow* window) {
 void VulkanBackend::loadMeshes() {
     // TODO: get rid of copying
     Mesh suzanneMesh;
-    //suzanneMesh.loadFromObj("/home/savas/Projects/ignoramus_renderer/assets/suzanne.obj");
-    suzanneMesh.loadFromObj("/home/savas/Projects/ignoramus_renderer/assets/sponza/sponza.obj");
-    scene.meshes["suzanne"] = suzanneMesh;
-    uploadMesh(scene.meshes["suzanne"]);
+    //suzanneMesh.loadFromObj("/home/savas/Projects/ignoramus_renderer/assets/suzanne.obj", "");
+    suzanneMesh.loadFromObj("/home/savas/Projects/ignoramus_renderer/assets/sponza/sponza.obj", "/home/savas/Projects/ignoramus_renderer/assets/sponza");
+    scene->meshes["suzanne"] = suzanneMesh;
+    uploadMesh(scene->meshes["suzanne"]);
 
     //Mesh lostEmpireMesh;
     //lostEmpireMesh.loadFromObj("/home/savas/Projects/troglodite/assets/lost_empire/lost_empire.obj");
-    //scene.meshes["lostEmpire"] = lostEmpireMesh;
-    //uploadMesh(scene.meshes["lostEmpire"]);
+    //scene->meshes["lostEmpire"] = lostEmpireMesh;
+    //uploadMesh(scene->meshes["lostEmpire"]);
 
     Mesh triangleMesh;
     triangleMesh.vertices.resize(3);
@@ -113,13 +114,11 @@ void VulkanBackend::loadMeshes() {
     triangleMesh.vertices[0].color = { 0.f, 1.f, 0.0f }; //pure green
     triangleMesh.vertices[1].color = { 0.f, 1.f, 0.0f }; //pure green
     triangleMesh.vertices[2].color = { 0.f, 1.f, 0.0f }; //pure green
-    scene.meshes["triangle"] = triangleMesh;
-    uploadMesh(scene.meshes["triangle"]);
+    scene->meshes["triangle"] = triangleMesh;
+    uploadMesh(scene->meshes["triangle"]);
 }
 
 void VulkanBackend::loadTextures() {
-    textureCache = new TextureCache(*this);
-
     Texture lostEmpire;
     //loadFromFile(*this, "/home/savas/Projects/troglodite/assets/lost_empire/lost_empire-RGBA.png", lostEmpire.image);
     loadFromFile(*this, "/home/savas/Projects/ignoramus_renderer/assets/textures/default.jpeg", lostEmpire.image);
@@ -132,11 +131,11 @@ void VulkanBackend::loadTextures() {
 
     VkImageViewCreateInfo imageViewInfo = imageViewCreateInfo(VK_FORMAT_R8G8B8A8_SRGB, lostEmpire.image.image, VK_IMAGE_ASPECT_COLOR_BIT);
     vkCreateImageView(device, &imageViewInfo, nullptr, &lostEmpire.view);
-    //scene.textures["lost_empire_diffuse"] = *textureResult.texture;
-    scene.textures["lost_empire_diffuse"] = lostEmpire;
+    //scene->textures["lost_empire_diffuse"] = *textureResult.texture;
+    scene->textures["lost_empire_diffuse"] = lostEmpire;
 
     deinitQueue.enqueue([&]() {
-        LOG_CALL(vkDestroyImageView(device, scene.textures["lost_empire_diffuse"].view, nullptr));
+        LOG_CALL(vkDestroyImageView(device, scene->textures["lost_empire_diffuse"].view, nullptr));
     });
 
     //TODO: definitely should be elsewhere
@@ -151,12 +150,12 @@ void VulkanBackend::loadTextures() {
 
     VkDescriptorSetAllocateInfo setAllocInfo = descriptorSetAllocate(descriptorPool, 1, &singleTextureDescriptorSetLayout);
 
-    TEMPMaterial* mat = &scene.materials["defaultMaterial"];
+    TEMPMaterial* mat = &scene->materials["defaultMaterial"];
     vkAllocateDescriptorSets(device, &setAllocInfo, &mat->textureSet);
 
     VkDescriptorImageInfo imageDescriptorInfo = {};
     imageDescriptorInfo.sampler = nearestSampler;
-    imageDescriptorInfo.imageView = scene.textures["lost_empire_diffuse"].view;
+    imageDescriptorInfo.imageView = scene->textures["lost_empire_diffuse"].view;
     imageDescriptorInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
     
     VkWriteDescriptorSet imageSetWrite = writeDescriptorImage(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, mat->textureSet, &imageDescriptorInfo, 0);
@@ -545,7 +544,7 @@ void VulkanBackend::draw() {
     vkCmdBeginRenderPass(cmd, &rpInfo, VK_SUBPASS_CONTENTS_INLINE);
     vkCmdSetViewport(cmd, 0, 1, &viewport);
     vkCmdSetScissor(cmd, 0, 1, &scissor);
-    scene.draw(*this, cmd, currentFrame());
+    scene->draw(cmd, currentFrame());
     ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), cmd); // TODO: move out to UI pass, or something above that
     vkCmdEndRenderPass(cmd);
     //finalize the command buffer (we can no longer add commands, but it can now be executed)
@@ -608,14 +607,14 @@ void VulkanBackend::initDescriptors() {
         { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 10 },
         { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 10 },
         { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 10 },
-        { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 10 },
+        { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1000 },
     };
 
     VkDescriptorPoolCreateInfo poolCreateInfo = {};
     poolCreateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
     poolCreateInfo.pNext = nullptr;
     poolCreateInfo.flags = 0;
-    poolCreateInfo.maxSets = 10;
+    poolCreateInfo.maxSets = 1000;
     poolCreateInfo.poolSizeCount = sizeof(descriptorPoolSizes) / sizeof(VkDescriptorPoolSize);
     poolCreateInfo.pPoolSizes = descriptorPoolSizes;
 
@@ -681,6 +680,8 @@ void VulkanBackend::initDescriptors() {
 }
 
 void VulkanBackend::initPipelines() {
+    textureCache = new TextureCache(*this);
+
     VkPipelineLayoutCreateInfo layoutInfo = layoutCreateInfo();
 
     // TODO: specialization constants for compiling shaders
@@ -741,6 +742,17 @@ void VulkanBackend::initPipelines() {
     // TODO: redo materials internals to support SoA for usage with vkCreateGraphicsPipelines
     materials->buildQueued();
 
+    VkSamplerCreateInfo samplerInfo = samplerCreateInfo(VK_FILTER_NEAREST);
+    CacheLoadResult<SampledTexture> defaultAlbedo = textureCache->load("/home/savas/Projects/ignoramus_renderer/assets/textures/default.jpeg", samplerInfo);
+    if (defaultAlbedo.success) {
+        // TODO: mem leak
+        materials->materials[Materials::DEFAULT_LIT].defaultTextures["albedo"] = new SampledTexture();
+        *materials->materials[Materials::DEFAULT_LIT].defaultTextures["albedo"] = *defaultAlbedo.data;
+    } else {
+        printf("failed creating default texture\n");
+        assert(false);
+    }
+
     //VkShaderModule triangleVert = materials->materials[Materials::DEFAULT_LIT].perPassShaders[static_cast<size_t>(PassType::FORWARD_OPAQUE)]->info->stages[0].module->module;
     //VkShaderModule triangleFrag = materials->materials[Materials::DEFAULT_LIT].perPassShaders[static_cast<size_t>(PassType::FORWARD_OPAQUE)]->info->stages[1].module->module;
 
@@ -769,7 +781,7 @@ void VulkanBackend::initPipelines() {
     builder.pipelineLayout = pipelineLayout;
 
     pipeline = builder.build(device, defaultRenderpass, &viewport, &scissor, pipelineLayout);
-    scene.createMaterial(pipeline, pipelineLayout, "defaultMaterial");
+    scene->createMaterial(pipeline, pipelineLayout, "defaultMaterial");
 
     deinitQueue.enqueue([=]() {
         LOG_CALL(vkDestroyPipeline(device, pipeline, nullptr));

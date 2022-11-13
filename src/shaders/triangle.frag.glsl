@@ -13,11 +13,13 @@ layout (set = 0, binding = 1) uniform SceneParams {
     vec4 sunlightColor;
 } sceneParams;
 
-layout (set = 2, binding = 0) uniform sampler2D tex;
+// TEMP: move to bindless
+layout (set = 2, binding = 0) uniform sampler2D albedoTex;
+layout (set = 2, binding = 1) uniform sampler2D normalTex;
 
 void main()
 {
-    vec3 color = texture(tex, inUv).rgb;
+    vec3 color = texture(albedoTex, inUv).rgb;
     outFragColor = vec4(color.rgb, 1.0f);
 }
 

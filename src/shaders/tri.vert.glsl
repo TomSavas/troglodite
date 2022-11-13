@@ -12,6 +12,10 @@ layout (set = 0, binding = 0) uniform CameraBuffer {
     mat4 view;
     mat4 projection;
     mat4 viewProjection;
+
+    //mat4 debugCamView;
+    //mat4 debugCamProjection;
+    //mat4 debugCamViewProjection;
 } cameraData;
 
 layout (push_constant) uniform constants

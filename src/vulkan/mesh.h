@@ -5,6 +5,7 @@
 #include <vk_mem_alloc.h>
 
 #include "vulkan/types.h"
+#include "tiny_obj_loader.h"
 
 struct MeshPushConstants {
     glm::vec4 data;
@@ -27,9 +28,24 @@ struct Vertex {
     static VertexInputDescription getVertexDescription();
 };
 
+struct Model {
+    //std::vector<Vertex> vertices;
+    //AllocatedBuffer vertexBuffer;
+    std::string name;
+
+    std::vector<Mesh> meshes;
+
+    void loadFromObj(const char* filename, const char* materialDir);
+};
+
 struct Mesh {
+    std::string name;
+
+    // TODO: have all vertices under the model and only have indices here.
     std::vector<Vertex> vertices;
     AllocatedBuffer vertexBuffer;
 
-    void loadFromObj(const char* filename);
+    tinyobj::material_t loaderMaterial;
+
+    void loadFromObj(const char* filename, const char* materialDir);
 };

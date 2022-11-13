@@ -95,7 +95,7 @@ struct VulkanBackend {
 
     bool swapchainRegenRequested = false;
 
-    Scene scene;
+    Scene* scene;
 
     UploadContext uploadCtx;
 

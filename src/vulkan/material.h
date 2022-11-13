@@ -8,6 +8,7 @@
 
 #include "vulkan/mesh.h"
 #include "vulkan/pipeline_builder.h"
+#include "vulkan/texture.h"
 #include "vulkan/vk_shader.h"
 
 enum class PassType : uint8_t {
@@ -25,7 +26,11 @@ enum class PassType : uint8_t {
 
     PRE_UI_PPFX            ,
     UI_PPFX                ,
+
+    COMPOSIT               ,
     POST_UI_PPFX           ,
+
+    PRESENT                ,
 
     PASS_COUNT
 };
@@ -44,12 +49,21 @@ struct PassBuildingMaterials {
 struct MaterialBuilder {
     std::string materialName;
     std::vector<PassBuildingMaterials> buildingMaterials;
+    std::unordered_map<std::string, std::string> defaultTextures;
 
     static MaterialBuilder begin(std::string name);
     MaterialBuilder& addPass(PassType type, ShaderPassInfo* pass, PipelineBuilder builder, VkRenderPass renderpass, VkViewport& viewport, VkRect2D& scissor);
+    MaterialBuilder& addDefaultTexture(std::string name, std::string path);
 
 private:
     MaterialBuilder(std::string materialName) : materialName(materialName) {}
+};
+
+struct MaterialInstance {
+    std::unordered_map<std::string, SampledTexture*> textures;
+    VkDescriptorSet textureDescriptorSet;
+    //settings;
+    std::vector<uint32_t> meshInstanceIndices;
 };
 
 struct Material {
@@ -61,14 +75,13 @@ struct Material {
     ShaderPass* perPassShaders[static_cast<size_t>(PassType::PASS_COUNT)];
     std::vector<VkDescriptorSet> perPassDescriptorSets[static_cast<size_t>(PassType::PASS_COUNT)];
 
-    //std::unordered_map<std::string, SampledTexture*> defaultTextures;
+    std::unordered_map<std::string, SampledTexture*> defaultTextures;
     //defaultSettings; //No clue how to implement type safely
-};
 
-struct MaterialInstance {
-    Material* material;
-    //std::unordered_map<std::string, SampledTexture*> textures;
-    //settings;
+    void bindDescriptorSets(PassType type);
+
+    // TODO: move away into scene
+    std::vector<MaterialInstance> instances;
 };
 
 struct ShaderPassCache;
@@ -79,7 +92,7 @@ struct Materials {
     std::vector<MaterialBuilder> queuedBuilders;
 
     std::unordered_map<std::string, Material> materials;
-    std::unordered_map<std::string, MaterialInstance> instances;
+    //std::unordered_map<std::string, MaterialInstance> instances;
 
     Materials(ShaderPassCache& shaderPassCache) : shaderPassCache{shaderPassCache} {}
 

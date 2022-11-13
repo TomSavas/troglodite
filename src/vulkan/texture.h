@@ -16,7 +16,7 @@ struct Texture {
 
 struct SampledTexture {
     Texture* texture;
-    VkSampler* sampler;
+    VkSampler sampler;
 };
 
 struct TextureCache {
@@ -28,4 +28,5 @@ struct TextureCache {
     // TODO: separately cache AllocatedImages, VkImageViews and VkSamplers and combine them
     // as needed.
     CacheLoadResult<Texture> load(std::string path);
+    CacheLoadResult<SampledTexture> load(std::string path, VkSamplerCreateInfo sampler);
 };

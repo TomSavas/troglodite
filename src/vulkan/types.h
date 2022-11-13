@@ -11,10 +11,13 @@ struct TEMPMaterial {
 };
 
 struct Mesh;
+struct MaterialInstance;
 struct RenderObject {
     Mesh* mesh;
     TEMPMaterial* material;
     glm::mat4 modelMatrix;
+
+    MaterialInstance* tempInstance;
 };
 
 struct AllocatedBuffer {

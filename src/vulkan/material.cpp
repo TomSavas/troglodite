@@ -19,6 +19,12 @@ MaterialBuilder& MaterialBuilder::addPass(PassType type, ShaderPassInfo* passInf
     return *this;
 }
 
+MaterialBuilder& MaterialBuilder::addDefaultTexture(std::string name, std::string path) {
+    defaultTextures[name] = path;
+
+    return *this;
+}
+
 void Materials::enqueue(MaterialBuilder&& builder) {
     queuedBuilders.push_back(builder);
 }
@@ -34,6 +40,11 @@ void Materials::buildQueued() {
         }
         Material& material = materials[builder.materialName];
         material.name = builder.materialName;
+
+        for (auto& textureInfo : builder.defaultTextures) {
+            // TODO: load
+            material.defaultTextures[textureInfo.first] = nullptr;
+        }
 
         for (PassBuildingMaterials passBuildingMaterials : builder.buildingMaterials) {
             CacheLoadResult<ShaderPass> passResult = shaderPassCache.loadPass(passBuildingMaterials);
