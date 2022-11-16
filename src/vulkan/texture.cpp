@@ -13,10 +13,11 @@
 CacheLoadResult<Texture> TextureCache::load(std::string path) {
     auto textureFromCache = cache.find(path);
     if (textureFromCache != cache.end()) {
-        printf("Loading cached texture %s\n", path.c_str());
+        //printf("Loading cached texture %s\n", path.c_str());
         return CacheLoadResult<Texture>(true, &textureFromCache->second);
+    } else {
+        printf("Loading new texture %s\n", path.c_str());
     }
-    printf("Loading new texture %s\n", path.c_str());
 
     int width;
     int height;
@@ -31,8 +32,6 @@ CacheLoadResult<Texture> TextureCache::load(std::string path) {
     // TODO: different image formats depending on how many channels
     VkDeviceSize imageSize = width * height * 4 * 1; // 1 byte per channel
     VkFormat imageFormat = VK_FORMAT_R8G8B8A8_SRGB;
-
-    printf("Size: %dx%d channels: %d. Size: %dB\n", width, height, channels, imageSize);
 
     AllocatedBuffer cpuImageBuffer = backend.createBuffer(imageSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
     backend.uploadData((void*)pixels, imageSize, 0, cpuImageBuffer.allocation);

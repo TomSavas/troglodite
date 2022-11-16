@@ -121,12 +121,7 @@ struct VulkanBackend {
     VkRenderPass defaultRenderpass;
     std::vector<VkFramebuffer> framebuffers;
 
-    VkPipelineLayout pipelineLayout;
-    VkPipeline pipeline;
-
     VmaAllocator allocator;
-
-    Mesh triangleMesh;
 
     VkImageView depthImageView;
     AllocatedImage depthImage;
@@ -149,7 +144,6 @@ struct VulkanBackend {
     // TODO: should be stored along with the descriptor set
     VkDescriptorSetLayout globalDescriptorSetLayout;
     VkDescriptorSetLayout objectDescriptorSetLayout;
-    VkDescriptorSetLayout singleTextureDescriptorSetLayout;
     VkDescriptorPool descriptorPool;
 
     static void framebufferResizeCallback(GLFWwindow* window, int width, int height);
@@ -167,9 +161,6 @@ struct VulkanBackend {
     void initDescriptors();
     void initPipelines();
     void initImgui();
-
-    void loadMeshes();
-    void loadTextures();
 
     void uploadMesh(Mesh& mesh);
     void uploadData(const void* data, size_t size, size_t offset, VmaAllocation allocation);

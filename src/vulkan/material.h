@@ -35,7 +35,10 @@ enum class PassType : uint8_t {
     PASS_COUNT
 };
 
+struct MaterialBuilder;
 struct PassBuildingMaterials {
+    MaterialBuilder& builder;
+
     PassType type;
     ShaderPassInfo* info;
     PipelineBuilder pipelineBuilder;
@@ -44,6 +47,17 @@ struct PassBuildingMaterials {
     //TEMP: 
     VkViewport& viewport;
     VkRect2D& scissor;
+
+    std::vector<uint8_t> perInFlightFrameDescriptorSetIndices;
+
+    PassBuildingMaterials(MaterialBuilder& builder, PassType type, ShaderPassInfo* info,
+        PipelineBuilder pipelineBuilder, VkRenderPass renderpass, VkViewport& viewport,
+        VkRect2D& scissor) : builder(builder), type(type), info(info), pipelineBuilder(pipelineBuilder),
+            renderpass(renderpass), viewport(viewport), scissor(scissor) {}
+
+    MaterialBuilder& endPass();
+    //PassBuildingMaterials& setDescriptorSetBindingExpectation(uint8_t setIndex, std::vector<VkDescriptorSetLayoutBinding> bindingExpectations);
+    PassBuildingMaterials& perInFlightFramesDescriptorSets(size_t inFlightFrames, std::vector<uint8_t> descriptorSetIndices);
 };
 
 struct MaterialBuilder {
@@ -53,7 +67,10 @@ struct MaterialBuilder {
 
     static MaterialBuilder begin(std::string name);
     MaterialBuilder& addPass(PassType type, ShaderPassInfo* pass, PipelineBuilder builder, VkRenderPass renderpass, VkViewport& viewport, VkRect2D& scissor);
+
     MaterialBuilder& addDefaultTexture(std::string name, std::string path);
+
+    PassBuildingMaterials& beginPass(PassType type, ShaderPassInfo* pass, PipelineBuilder builder, VkRenderPass renderpass, VkViewport& viewport, VkRect2D& scissor);
 
 private:
     MaterialBuilder(std::string materialName) : materialName(materialName) {}
@@ -86,7 +103,7 @@ struct Material {
 
 struct ShaderPassCache;
 struct Materials {
-    static constexpr char* DEFAULT_LIT = "default_lit";
+    static constexpr const char* DEFAULT_LIT = "default_lit";
 
     ShaderPassCache& shaderPassCache;
     std::vector<MaterialBuilder> queuedBuilders;

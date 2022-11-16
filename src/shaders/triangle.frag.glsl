@@ -15,7 +15,7 @@ layout (set = 0, binding = 1) uniform SceneParams {
 
 // TEMP: move to bindless
 layout (set = 2, binding = 0) uniform sampler2D albedoTex;
-layout (set = 2, binding = 1) uniform sampler2D normalTex;
+//layout (set = 2, binding = 1) uniform sampler2D normalTex;
 
 void main()
 {

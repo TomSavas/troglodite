@@ -9,19 +9,22 @@
 #include "vk_init_helpers.h"
 #include "descriptors.h"
 
-TEMPMaterial* Scene::createMaterial(VkPipeline pipeline, VkPipelineLayout layout, const std::string& name) {
-    materials[name] = TEMPMaterial { VK_NULL_HANDLE, pipeline, layout };
-    return &materials[name];
+size_t ObjectData::pushBackDefaults() {
+    positions.emplace_back(glm::vec3(0.0));
+    scales.emplace_back(glm::vec3(1.0));
+    rotations.emplace_back(glm::mat4(1.0));
+    isValidModelMatrixCache.emplace_back(true);
+    modelMatrixCache.emplace_back(glm::mat4(1.0));
+
+    return positions.size() - 1;
 }
 
 Scene::Object Scene::addObject(std::string meshName, std::string materialDir, bool separateMaterialInstances) {
     // TODO: we need to cache meshes
     Object object;
-    object.objectDataIndex = objectData.size();
+    object.objectDataIndex = objectData.pushBackDefaults();
 
-    objectData.emplace_back();
-
-    static Model model; // TEMP: testing 
+    Model model;
     model.loadFromObj(meshName.c_str(), materialDir.c_str());
     for (auto& mesh : model.meshes) {
         //printf("uploading mesh %s\n", mesh.name.c_str());
@@ -30,7 +33,7 @@ Scene::Object Scene::addObject(std::string meshName, std::string materialDir, bo
         uint32_t meshInstanceIndex = meshInstances.size();
         uint32_t materialInstanceIndex = backend->materials->materials[Materials::DEFAULT_LIT].instances.size();
 
-        // TODO: separatematerialInstances
+        // TODO: separate materialInstances
         MaterialInstance& materialInstance = backend->materials->materials[Materials::DEFAULT_LIT].instances.emplace_back();
         materialInstance.meshInstanceIndices.push_back(meshInstanceIndex);
 
@@ -40,10 +43,7 @@ Scene::Object Scene::addObject(std::string meshName, std::string materialDir, bo
         }
 
         // Override the default textures
-        // TEMP
         VkSamplerCreateInfo samplerInfo = samplerCreateInfo(VK_FILTER_NEAREST);
-
-        // TODO: load textures
         CacheLoadResult<SampledTexture> albedo = backend->textureCache->load(materialDir + "/../" + mesh.loaderMaterial.diffuse_texname.c_str(), samplerInfo);
         if (albedo.success) {
             materialInstance.textures["albedo"] = albedo.data;
@@ -70,50 +70,17 @@ Scene::Object Scene::addObject(std::string meshName, std::string materialDir, bo
             .build(&materialInstance.textureDescriptorSet);
 
         // TODO: stupid -- for testing only. Once we cache meshes we can simply add to objectIndices 
-        meshInstances.push_back(MeshInstance{ mesh, std::vector<uint32_t>{ object.objectDataIndex } });
+        meshInstances.push_back(MeshInstances{ mesh, std::vector<uint32_t>{ object.objectDataIndex } });
 
         object.meshInstanceIndices.push_back(meshInstanceIndex);
         object.materialInstanceIndices.push_back(materialInstanceIndex);
     }
-
+    
     return object;
 }
 
 void Scene::initTestScene() {
-    //Object sponza = loadMesh("/home/savas/Projects/ignoramus_renderer/assets/sponza/sponza.obj", "/home/savas/Projects/ignoramus_renderer/assets/sponza");
     Object object = addObject("/home/savas/Projects/ignoramus_renderer/assets/sponza/sponza.obj", "/home/savas/Projects/ignoramus_renderer/assets/sponza");
-
-    RenderObject suzanne;
-    suzanne.mesh = &meshes["suzanne"];
-    //suzanne.mesh = &meshes["lostEmpire"];
-    suzanne.material = &materials["defaultMaterial"];
-    suzanne.modelMatrix = glm::translate(glm::vec3(5.f, -10.f, 0.f));
-
-    //renderables.push_back(suzanne);
-
-    for (int i = 0; i < object.meshInstanceIndices.size(); ++i) {
-        renderables.push_back(RenderObject{
-            &meshInstances[object.meshInstanceIndices[i]].mesh,
-            &materials["defaultMaterial"],
-            glm::translate(glm::vec3(5.f, -10.f, 0.f)),
-
-            &backend->materials->materials[Materials::DEFAULT_LIT]
-                .instances[object.materialInstanceIndices[i]]
-        });
-    }
-
-    //for (int x = -20; x <= 20; x++) {
-    //    for (int y = -20; y <= 20; y++) {
-    //        RenderObject tri;
-    //        tri.mesh = &meshes["triangle"];
-    //        tri.material = &materials["defaultMaterial"];
-    //        glm::mat4 translation = glm::translate(glm::mat4{ 1.0 }, glm::vec3(x, 0, y));
-    //        glm::mat4 scale = glm::scale(glm::mat4{ 1.0 }, glm::vec3(0.2, 0.2, 0.2));
-    //        tri.modelMatrix = translation * scale;
-
-    //        renderables.push_back(tri);
-    //    }
-    //}
 }
 
 glm::vec3 right(glm::mat4 mat) {
@@ -187,10 +154,6 @@ void Scene::update(float dt) {
 }
 
 void Scene::draw(VkCommandBuffer cmd, FrameData& frameData) {
-    if (renderables.size() == 0) {
-        return;
-    }
-
     glm::mat4 view = glm::lookAt(mainCamera.pos, mainCamera.pos + forward(mainCamera.rotation), up(mainCamera.rotation));
     glm::mat4 projection = glm::perspective(glm::radians(70.f), 1700.f / 900.f, 0.1f, 20000.f);
     projection[1][1] *= -1; 
@@ -206,98 +169,71 @@ void Scene::draw(VkCommandBuffer cmd, FrameData& frameData) {
     uint32_t sceneParamsUniformOffset = backend->padUniformBufferSize(sizeof(GPUSceneData)) * (backend->frameNumber % VulkanBackend::MAX_FRAMES_IN_FLIGHT);
     backend->uploadData((void*)&backend->sceneParams, sizeof(GPUSceneData), sceneParamsUniformOffset, backend->sceneParamsBuffers.allocation);
 
-    // TODO: redo renderables into a SoA so that we can just upload the matrix array here.
+    // TODO: redo object data into a SoA so that we can just upload the matrix array here.
     {
         void* gpuData;
         vmaMapMemory(backend->allocator, frameData.objectDataBuffer.allocation, &gpuData);
         GPUObjectData* gpuObjectData = (GPUObjectData*)gpuData;
-        for (size_t i = 0; i < renderables.size(); i++) {
-            gpuObjectData[i].modelMatrix = renderables[i].modelMatrix;
+
+        // TODO: Probably make another set of arrays for dirty data. At the moment nices way
+        // to prevent from having to do this every frame on all objects
+        for (size_t i = 0; i < objectData.isValidModelMatrixCache.size(); ++i) {
+            if (!objectData.isValidModelMatrixCache[i]) {
+                objectData.modelMatrixCache[i] = glm::translate(objectData.positions[i]) * 
+                    objectData.rotations[i] * 
+                    glm::scale(objectData.scales[i]);
+                objectData.isValidModelMatrixCache[i] = true;
+            }
+
+            gpuObjectData[i].modelMatrix = objectData.modelMatrixCache[i];
         }
         vmaUnmapMemory(backend->allocator, frameData.objectDataBuffer.allocation);
     }
 
-    //for (uint8_t passIndex = 0; passIndex < (uint8_t)PassType::PASS_COUNT; ++passIndex) {
-    //    PassType pass = static_cast<PassType>(passIndex);
+    // TODO: okay, well this performs absolutely horribly. Need to move materials to
+    // a per pass array at the very least. 
+    for (uint8_t passIndex = 0; passIndex < (uint8_t)PassType::PASS_COUNT; ++passIndex) {
+        for (auto mat : backend->materials->materials) {
+            Material& material = mat.second;
 
-    //    //for (Material* material : passMaterials[passIndex]) {
-    //    for (auto mat : backend->materials->materials) {
-    //        Material& material = mat.second;
+            ShaderPass* shaderPass = material.perPassShaders[passIndex];
+            if (shaderPass == nullptr) {
+                continue;
+            }
 
-    //        ShaderPass* shaderPass = material.perPassShaders[passIndex];
-    //        if (shaderPass == nullptr) {
-    //            continue;
-    //        }
-
-    //        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shaderPass->pipeline);
-    //        //material.bindDescriptorSets(pass);
-
-    //        // TODO: push all metrial instances and then draw with a single draw call
-    //        // TODO: cache the resulting draw calls and only invalidate the cache once objects
-    //        // get added / removed... Weeeeeeell might get a little bit more complicated when doing culling
-    //        for (auto& materialInstance : material.instances) {
-    //            //materialInstance.bindBuffers();
-    //            //materialInstance.bindImages();
-
-    //            // TODO: merge into a single draw call -- simple just write objectIds into a buffer
-    //            MeshInstance* lastMeshInstance = nullptr;
-    //            for (uint32_t meshInstanceIndex : materialInstance.meshInstanceIndices) {
-    //                MeshInstance& meshInstance = meshInstances[meshInstanceIndex];
-    //                if (&meshInstance != lastMeshInstance) {
-    //                    VkDeviceSize offset = 0;
-    //                    vkCmdBindVertexBuffers(cmd, 0, 1, &meshInstance.mesh.vertexBuffer.buffer, &offset);
-    //                    lastMeshInstance = &meshInstance;
-    //                }
-
-    //                for (uint32_t objectIndex : meshInstance.objectDataIndices) {
-    //                    // TODO: bind object data?
-    //                    vkCmdDraw(cmd, meshInstance.mesh.vertices.size(), 1, 0, objectIndex);
-    //                }
-    //            }
-    //        }
-    //    }
-    //}
-
-    Mesh* lastMesh = nullptr;
-    TEMPMaterial* lastMaterial = nullptr;
-    for (size_t i = 0; i < renderables.size(); i++) {
-        RenderObject& renderable = renderables[i];
-        if (renderable.material == nullptr || renderable.mesh == nullptr) {
-            continue;
-        }
-
-        if (renderable.material != lastMaterial) {
-            vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, renderable.material->pipeline);
-            lastMaterial = renderable.material;
-            //renderable.materialInstance->baseMaterial.bindDescriptorSets();
-
-            vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, renderable.material->pipelineLayout,
+            vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shaderPass->pipeline);
+            vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shaderPass->info->layout,
                 0, 1, &frameData.globalDescriptor, 1, &sceneParamsUniformOffset);
 
-            vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, renderable.material->pipelineLayout,
+            vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shaderPass->info->layout,
                 1, 1, &frameData.objectDescriptor, 0, nullptr);
+            //material.bindDescriptorSets(pass);
 
-            //if (renderable.material->textureSet != VK_NULL_HANDLE) {
-            //    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, renderable.material->pipelineLayout,
-            //        2, 1, &renderable.material->textureSet, 0, nullptr);
-            //}
+            // TODO: push all metrial instances and then draw with a single draw call
+            // TODO: cache the resulting draw calls and only invalidate the cache once objects
+            // get added / removed... Weeeeeeell might get a little bit more complicated when doing culling
+            for (auto& materialInstance : material.instances) {
+                //materialInstance.bindBuffers();
+                //materialInstance.bindImages();
+                vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shaderPass->info->layout,
+                        2, 1, &materialInstance.textureDescriptorSet, 0, nullptr);
+
+                // TODO: merge into a single draw call -- simple just write objectIds into a buffer
+                MeshInstances* lastMeshInstances = nullptr;
+                for (uint32_t meshInstanceIndex : materialInstance.meshInstanceIndices) {
+                    MeshInstances& instances = meshInstances[meshInstanceIndex];
+                    if (&instances != lastMeshInstances) {
+                        VkDeviceSize offset = 0;
+                        vkCmdBindVertexBuffers(cmd, 0, 1, &instances.mesh.vertexBuffer.buffer, &offset);
+                        lastMeshInstances = &instances;
+                    }
+
+                    for (uint32_t objectIndex : instances.objectDataIndices) {
+                        // TODO: bind object data?
+                        vkCmdDraw(cmd, instances.mesh.vertices.size(), 1, 0, objectIndex);
+                    }
+                }
+            }
         }
-        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, renderable.material->pipelineLayout,
-            2, 1, &renderable.tempInstance->textureDescriptorSet, 0, nullptr);
-
-        //renderable.materialInstance.bindBuffers();
-        //renderable.materialInstance.bindImages();
-
-        MeshPushConstants constants;
-        constants.MVP = renderable.modelMatrix;
-        vkCmdPushConstants(cmd, renderable.material->pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(MeshPushConstants), &constants);
-
-        if (renderable.mesh != lastMesh) {
-            VkDeviceSize offset = 0;
-            vkCmdBindVertexBuffers(cmd, 0, 1, &renderable.mesh->vertexBuffer.buffer, &offset);
-            lastMesh = renderable.mesh;
-        }
-
-        vkCmdDraw(cmd, renderable.mesh->vertices.size(), 1, 0, i);
     }
 }

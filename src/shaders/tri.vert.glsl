@@ -18,6 +18,14 @@ layout (set = 0, binding = 0) uniform CameraBuffer {
     //mat4 debugCamViewProjection;
 } cameraData;
 
+layout (set = 0, binding = 1) uniform SceneParams {
+    vec4 fogColor; // w exponent
+    vec4 fogDistances; // x for min, y for max, zw unused
+    vec4 ambientColor;
+    vec4 sunlightDirection; // w for sun power
+    vec4 sunlightColor;
+} sceneParams;
+
 layout (push_constant) uniform constants
 {
     vec4 data;

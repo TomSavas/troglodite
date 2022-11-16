@@ -63,7 +63,24 @@ int main(void) {
             window_pos.y = work_pos.y + PAD;
             ImGui::SetNextWindowPos(window_pos, ImGuiCond_Always, ImVec2(1.f, 0.f));
 
-            static bool open = true;
+            static bool open = false;
+            static double frameTimes[256];
+            static int frameTimesIdx = 0;
+            if (!open) {
+                for (int i =0; i < 256; ++i) {
+                    frameTimes[i] = dt;
+                }
+                open = true;
+            }
+
+            frameTimes[frameTimesIdx] = dt;
+            double avgFrameTime = dt;
+            for (int i = (frameTimesIdx + 1) % 256; i != frameTimesIdx; i = (i + 1) % 256) {
+                avgFrameTime += frameTimes[i];
+            }
+            avgFrameTime /= 256.f;
+            frameTimesIdx = (frameTimesIdx + 1) % 256;
+
             ImGui::SetNextWindowBgAlpha(0.75f);
             if (ImGui::Begin("Info", &open, window_flags))
             {
@@ -79,8 +96,11 @@ int main(void) {
                 ImGui::Text("Frames: %.d", backend.frameNumber);
                 ImGui::Separator();
                 
-                ImGui::Text("CPU: %.9f sec", dt);
+                ImGui::Text("CPU: %.9f msec", dt * 1000.f);
                 ImGui::Text("     %.9f Hz", 1.0 / dt);
+                ImGui::Text("     Avg");
+                ImGui::Text("CPU: %.9f msec", avgFrameTime * 1000.f);
+                ImGui::Text("     %.9f Hz", 1.0 / avgFrameTime);
             }
             ImGui::End();
         }

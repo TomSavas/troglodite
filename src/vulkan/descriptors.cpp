@@ -7,6 +7,8 @@
 #include "vk_init_helpers.h"
 
 void DescriptorSetAllocator::alloc(VkDescriptorSet* descriptorSets, size_t setCount, VkDescriptorSetLayout layout) {
+    assert(setCount > 0);
+
     // TODO: change alloca with allocation from arena?
     VkDescriptorSetLayout* layouts = (VkDescriptorSetLayout*) alloca(setCount * sizeof(VkDescriptorSetLayout));
     for (size_t i = 0; i < setCount; ++i) {
@@ -115,12 +117,17 @@ VkDescriptorSetLayout DescriptorSetBuilder::build(VkDescriptorSet* descriptorSet
     }
 
     // TODO: error handle
-    allocator.alloc(descriptorSets, setCount, layout.value());
+    if (setCount > 0) {
+        allocator.alloc(descriptorSets, setCount, layout.value());
+    }
+
     // Backfill with descriptor dstSets as we skipped that in binds
     for (size_t i = 0; i < writes.size(); ++i) {
         writes[i].dstSet = descriptorSets[i % setCount];
     }
-    vkUpdateDescriptorSets(device, writes.size(), writes.data(), 0, nullptr);
+    if (writes.size() > 0) {
+        vkUpdateDescriptorSets(device, writes.size(), writes.data(), 0, nullptr);
+    }
 
     return layout.value();
 }

@@ -76,12 +76,10 @@ struct ReflectedBinding {
 };
 
 struct ShaderPassInfo {
-    //std::vector<> descriptorSetLayouts;
-    //std::vector<DescriptorBinding> bindings;
-
     std::vector<ShaderStage> stages;
 
     struct DescriptorSetLayout {
+        uint32_t setIndex; // Redundant, but helps debugging
         VkDescriptorSetLayout layout;
         std::vector<ReflectedBinding> bindings;
     };
@@ -124,6 +122,7 @@ struct ShaderPassCache {
     struct ShaderStageCreateInfo {
         ShaderPath path;
         VkShaderStageFlagBits stage;
+
         // TODO: add specialization constants
 
         ShaderStageCreateInfo(ShaderPath path, VkShaderStageFlagBits stage) : path(path), stage(stage) {}
@@ -141,19 +140,39 @@ struct ShaderPassCache {
     struct ShaderStageCreateInfos {
         std::vector<ShaderStageCreateInfo> stages;
 
-        ShaderStageCreateInfos(std::vector<ShaderStageCreateInfo> unsortedStages) {
+        struct DescriptorTypeOverride {
+            std::string bindingName;
+            VkDescriptorType type;
+        };
+        std::vector<DescriptorTypeOverride> overrides;
+
+        ShaderStageCreateInfos(std::vector<ShaderStageCreateInfo> unsortedStages,
+            std::vector<DescriptorTypeOverride> unsortedOverrides = {}) {
             std::sort(unsortedStages.begin(), unsortedStages.end(), [](ShaderStageCreateInfo a, ShaderStageCreateInfo b) {
                 return a.stage < b.stage;
             });
             stages = unsortedStages;
+
+            std::sort(unsortedOverrides.begin(), unsortedOverrides.end(), [](DescriptorTypeOverride a, DescriptorTypeOverride b) {
+                return a.bindingName.compare(b.bindingName) < 0;
+            });
+            overrides = unsortedOverrides;
         }
 
         bool operator==(const ShaderStageCreateInfos& other) const {
-            if (stages.size() != other.stages.size()) {
+            if (stages.size() != other.stages.size() || overrides.size() != other.overrides.size()) {
                 return false;
             }
             for (size_t i = 0; i < stages.size(); ++i) {
                 if (!(stages[i] == other.stages[i])) {
+                    return false;
+                }
+            }
+
+            for (size_t i = 0; i < overrides.size(); ++i) {
+                bool nameMatches = overrides[i].bindingName.compare(other.overrides[i].bindingName) != 0;
+                bool typeMatches = overrides[i].type != other.overrides[i].type;
+                if (!nameMatches || !typeMatches) {
                     return false;
                 }
             }
@@ -167,6 +186,12 @@ struct ShaderPassCache {
                 // Again, not great, but will work somewhat
                 hash ^= stages[i].hash();
             }
+            for (size_t i = 0; i < overrides.size(); ++i) {
+                // Again, not great, but will work somewhat
+                hash ^= std::hash<std::string>{}(overrides[i].bindingName);
+                hash ^= std::hash<size_t>{}(overrides[i].type);
+            }
+
             return hash;
         }
 

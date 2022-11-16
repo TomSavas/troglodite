@@ -86,80 +86,9 @@ VkExtent3D glfwFramebufferSize(GLFWwindow* window) {
     backend.initPipelines();
     backend.initImgui();
 
-    backend.loadMeshes();
-    backend.loadTextures();
     backend.frameNumber = 0;
 
     return backend;
-}
-
-void VulkanBackend::loadMeshes() {
-    // TODO: get rid of copying
-    Mesh suzanneMesh;
-    //suzanneMesh.loadFromObj("/home/savas/Projects/ignoramus_renderer/assets/suzanne.obj", "");
-    suzanneMesh.loadFromObj("/home/savas/Projects/ignoramus_renderer/assets/sponza/sponza.obj", "/home/savas/Projects/ignoramus_renderer/assets/sponza");
-    scene->meshes["suzanne"] = suzanneMesh;
-    uploadMesh(scene->meshes["suzanne"]);
-
-    //Mesh lostEmpireMesh;
-    //lostEmpireMesh.loadFromObj("/home/savas/Projects/troglodite/assets/lost_empire/lost_empire.obj");
-    //scene->meshes["lostEmpire"] = lostEmpireMesh;
-    //uploadMesh(scene->meshes["lostEmpire"]);
-
-    Mesh triangleMesh;
-    triangleMesh.vertices.resize(3);
-    triangleMesh.vertices[0].position = { 1.f, 1.f, 0.0f };
-    triangleMesh.vertices[1].position = {-1.f, 1.f, 0.0f };
-    triangleMesh.vertices[2].position = { 0.f,-1.f, 0.0f };
-    triangleMesh.vertices[0].color = { 0.f, 1.f, 0.0f }; //pure green
-    triangleMesh.vertices[1].color = { 0.f, 1.f, 0.0f }; //pure green
-    triangleMesh.vertices[2].color = { 0.f, 1.f, 0.0f }; //pure green
-    scene->meshes["triangle"] = triangleMesh;
-    uploadMesh(scene->meshes["triangle"]);
-}
-
-void VulkanBackend::loadTextures() {
-    Texture lostEmpire;
-    //loadFromFile(*this, "/home/savas/Projects/troglodite/assets/lost_empire/lost_empire-RGBA.png", lostEmpire.image);
-    loadFromFile(*this, "/home/savas/Projects/ignoramus_renderer/assets/textures/default.jpeg", lostEmpire.image);
-
-    //TextureCache::LoadResult textureResult = textureCache->load("/home/savas/Projects/ignoramus_renderer/assets/textures/default.jpeg");
-    //if (!textureResult.success) {
-    //    return;
-    //}
-    //Texture lostEmpire = *textureResult.texture;
-
-    VkImageViewCreateInfo imageViewInfo = imageViewCreateInfo(VK_FORMAT_R8G8B8A8_SRGB, lostEmpire.image.image, VK_IMAGE_ASPECT_COLOR_BIT);
-    vkCreateImageView(device, &imageViewInfo, nullptr, &lostEmpire.view);
-    //scene->textures["lost_empire_diffuse"] = *textureResult.texture;
-    scene->textures["lost_empire_diffuse"] = lostEmpire;
-
-    deinitQueue.enqueue([&]() {
-        LOG_CALL(vkDestroyImageView(device, scene->textures["lost_empire_diffuse"].view, nullptr));
-    });
-
-    //TODO: definitely should be elsewhere
-    VkSamplerCreateInfo samplerInfo = samplerCreateInfo(VK_FILTER_NEAREST);
-
-    static VkSampler nearestSampler;
-    vkCreateSampler(device, &samplerInfo, nullptr, &nearestSampler);
-
-    deinitQueue.enqueue([&]() {
-        LOG_CALL(vkDestroySampler(device, nearestSampler, nullptr));
-    });
-
-    VkDescriptorSetAllocateInfo setAllocInfo = descriptorSetAllocate(descriptorPool, 1, &singleTextureDescriptorSetLayout);
-
-    TEMPMaterial* mat = &scene->materials["defaultMaterial"];
-    vkAllocateDescriptorSets(device, &setAllocInfo, &mat->textureSet);
-
-    VkDescriptorImageInfo imageDescriptorInfo = {};
-    imageDescriptorInfo.sampler = nearestSampler;
-    imageDescriptorInfo.imageView = scene->textures["lost_empire_diffuse"].view;
-    imageDescriptorInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-    
-    VkWriteDescriptorSet imageSetWrite = writeDescriptorImage(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, mat->textureSet, &imageDescriptorInfo, 0);
-    vkUpdateDescriptorSets(device, 1, &imageSetWrite, 0, nullptr);
 }
 
 void VulkanBackend::uploadMesh(Mesh& mesh) {
@@ -663,10 +592,6 @@ void VulkanBackend::initDescriptors() {
         inFlightFrames[i].objectDescriptor = objectDescriptorSets[i]; 
     }
 
-    // Build material descriptor layouts, descriptor allocation has to be deferred until after pipeline creation
-    VkDescriptorSetLayoutBinding textureBinding = descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, 0);
-    singleTextureDescriptorSetLayout = descriptorSetLayoutCache->getLayout(&textureBinding, 1).value();
-
     deinitQueue.enqueue([=]() {
         LOG_CALL(
             for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
@@ -681,28 +606,6 @@ void VulkanBackend::initDescriptors() {
 
 void VulkanBackend::initPipelines() {
     textureCache = new TextureCache(*this);
-
-    VkPipelineLayoutCreateInfo layoutInfo = layoutCreateInfo();
-
-    // TODO: specialization constants for compiling shaders
-    
-    VkPushConstantRange pushConstant;
-    pushConstant.offset = 0;
-    pushConstant.size = sizeof(MeshPushConstants);
-    pushConstant.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-
-    layoutInfo.pPushConstantRanges = &pushConstant;
-    layoutInfo.pushConstantRangeCount = 1;
-
-    VkDescriptorSetLayout setLayouts[] = { globalDescriptorSetLayout, objectDescriptorSetLayout, singleTextureDescriptorSetLayout };
-    layoutInfo.setLayoutCount = 3;
-    layoutInfo.pSetLayouts = setLayouts;
-
-    VK_CHECK(vkCreatePipelineLayout(device, &layoutInfo, nullptr, &pipelineLayout));
-    deinitQueue.enqueue([=]() {
-        LOG_CALL(vkDestroyPipelineLayout(device, pipelineLayout, nullptr));
-    });
-
     shaderModuleCache = new ShaderModuleCache(device);
     shaderPassCache = new ShaderPassCache(device, *shaderModuleCache, *descriptorSetLayoutCache);
     materials = new Materials(*shaderPassCache);
@@ -718,22 +621,45 @@ void VulkanBackend::initPipelines() {
 
     // TODO: add error material
 
-    //ShaderPassCache::LoadResult csmPassResult = shaderPassCache->load(ShaderPassCache::ShaderStageCreateInfos({
-    //    ShaderPassCache::ShaderStageCreateInfo(SHADER_PATH("model_transform.vert.glsl"), VK_SHADER_STAGE_VERTEX_BIT),
-    //    ShaderPassCache::ShaderStageCreateInfo(SHADER_PATH("csm_gen_lightspace_transforms.geom.glsl"), VK_SHADER_STAGE_GEOMETRY_BIT),
-    //    ShaderPassCache::ShaderStageCreateInfo(SHADER_PATH("empty.frag.glsl"), VK_SHADER_STAGE_FRAGMENT_BIT),
-    //}));
-    CacheLoadResult<ShaderPassInfo> forwardLitPassInfoResult = shaderPassCache->loadInfo(ShaderPassCache::ShaderStageCreateInfos({
-        //ShaderPassCache::ShaderStageCreateInfo(SHADER_PATH("mvp_transform.vert.glsl"), VK_SHADER_STAGE_VERTEX_BIT),
-        //ShaderPassCache::ShaderStageCreateInfo(SHADER_PATH("forward_lit.frag.glsl"), VK_SHADER_STAGE_FRAGMENT_BIT),
-        ShaderPassCache::ShaderStageCreateInfo(SHADER_PATH("tri.vert.glsl"), VK_SHADER_STAGE_VERTEX_BIT),
-        ShaderPassCache::ShaderStageCreateInfo(SHADER_PATH("triangle.frag.glsl"), VK_SHADER_STAGE_FRAGMENT_BIT),
-    }));
+    // TODO: pass these into shaders as specialization constants
+    const uint8_t SCENE_DESCRIPTOR_SET_INDEX = 0;
+    const uint8_t OBJECT_DATA_DESCRIPTOR_SET_INDEX = 1;
 
-    if (/*csmPassResult.success && */forwardLitPassInfoResult.success) {
+    ShaderPassCache::ShaderStageCreateInfos::DescriptorTypeOverride sceneParamsDescriptorOverride {
+        "sceneParams", VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC 
+    };
+
+    //CacheLoadResult<ShaderPassInfo> csmPassInfoResult = shaderPassCache->loadInfo(ShaderPassCache::ShaderStageCreateInfos(
+    //    {
+    //        ShaderPassCache::ShaderStageCreateInfo(SHADER_PATH("model_transform.vert.glsl"), VK_SHADER_STAGE_VERTEX_BIT),
+    //        ShaderPassCache::ShaderStageCreateInfo(SHADER_PATH("csm_gen_lightspace_transforms.geom.glsl"), VK_SHADER_STAGE_GEOMETRY_BIT),
+    //        ShaderPassCache::ShaderStageCreateInfo(SHADER_PATH("empty.frag.glsl"), VK_SHADER_STAGE_FRAGMENT_BIT),
+    //    },
+    //    {
+    //        sceneParamsDescriptorOverride,
+    //    }));
+    CacheLoadResult<ShaderPassInfo> forwardLitPassInfoResult = shaderPassCache->loadInfo(ShaderPassCache::ShaderStageCreateInfos(
+        {
+            //ShaderPassCache::ShaderStageCreateInfo(SHADER_PATH("mvp_transform.vert.glsl"), VK_SHADER_STAGE_VERTEX_BIT),
+            //ShaderPassCache::ShaderStageCreateInfo(SHADER_PATH("forward_lit.frag.glsl"), VK_SHADER_STAGE_FRAGMENT_BIT),
+            ShaderPassCache::ShaderStageCreateInfo(SHADER_PATH("tri.vert.glsl"), VK_SHADER_STAGE_VERTEX_BIT),
+            ShaderPassCache::ShaderStageCreateInfo(SHADER_PATH("triangle.frag.glsl"), VK_SHADER_STAGE_FRAGMENT_BIT),
+        },
+        {
+            sceneParamsDescriptorOverride,
+        }));
+
+
+    if (/*csmPassInfoResult.success &&*/ forwardLitPassInfoResult.success) {
+        std::vector<uint8_t> globalPerInFlightFramesDescriptorSets { SCENE_DESCRIPTOR_SET_INDEX, OBJECT_DATA_DESCRIPTOR_SET_INDEX };
+
         materials->enqueue(std::move(MaterialBuilder::begin(Materials::DEFAULT_LIT)
-            //.addPass(PassType::DIRECTIONAL_SHADOW, csmPassResult.pass, shadowPipelineBuilder, shadowRenderpass)
-            .addPass(PassType::FORWARD_OPAQUE, forwardLitPassInfoResult.data, forwardPipelineBuilder, /*forwardRenderpass*/defaultRenderpass, viewport, scissor)
+            //.beginPass(PassType::DIRECTIONAL_SHADOW, csmPassInfoResult.pass, shadowPipelineBuilder, shadowRenderpass)
+            //    .perInFlightFramesDescriptors(MAX_FRAMES_IN_FLIGHT, globalPerInFlightFramesDescriptorSets)
+            //.endPass()
+            .beginPass(PassType::FORWARD_OPAQUE, forwardLitPassInfoResult.data, forwardPipelineBuilder, /*forwardRenderpass*/defaultRenderpass, viewport, scissor)
+                //.perInFlightFramesDescriptorSets(MAX_FRAMES_IN_FLIGHT, globalPerInFlightFramesDescriptorSets)
+            .endPass()
         ));
     } else {
         printf("Failed creating material \"%s\" - failed retrieving shaders\n", Materials::DEFAULT_LIT);
@@ -752,44 +678,6 @@ void VulkanBackend::initPipelines() {
         printf("failed creating default texture\n");
         assert(false);
     }
-
-    //VkShaderModule triangleVert = materials->materials[Materials::DEFAULT_LIT].perPassShaders[static_cast<size_t>(PassType::FORWARD_OPAQUE)]->info->stages[0].module->module;
-    //VkShaderModule triangleFrag = materials->materials[Materials::DEFAULT_LIT].perPassShaders[static_cast<size_t>(PassType::FORWARD_OPAQUE)]->info->stages[1].module->module;
-
-    VkShaderModule triangleVert = forwardLitPassInfoResult.data->stages[0].module->module;
-    VkShaderModule triangleFrag = forwardLitPassInfoResult.data->stages[1].module->module;
-
-    PipelineBuilder builder;
-
-    builder.shaderStages.push_back(shaderStageCreateInfo(VK_SHADER_STAGE_VERTEX_BIT, triangleVert));
-    builder.shaderStages.push_back(shaderStageCreateInfo(VK_SHADER_STAGE_FRAGMENT_BIT, triangleFrag));
-
-    VertexInputDescription vertexInputDescription = Vertex::getVertexDescription();
-
-    builder.vertexInputInfo = vertexInputStateCreateInfo();
-    builder.vertexInputInfo.pVertexBindingDescriptions = vertexInputDescription.bindings.data();
-    builder.vertexInputInfo.vertexBindingDescriptionCount = vertexInputDescription.bindings.size();
-    builder.vertexInputInfo.pVertexAttributeDescriptions = vertexInputDescription.attributes.data();
-    builder.vertexInputInfo.vertexAttributeDescriptionCount = vertexInputDescription.attributes.size();
-
-    builder.inputAssembly = inputAssemblyCreateInfo(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
-
-    builder.rasterizer = rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL);
-    builder.multisampling = multisampleStateCreateInfo();
-    builder.colorBlendAttachment = colorBlendAttachmentState();
-    builder.depthStencil = depthStencilCreateInfo(true, true, VK_COMPARE_OP_LESS_OR_EQUAL);
-    builder.pipelineLayout = pipelineLayout;
-
-    pipeline = builder.build(device, defaultRenderpass, &viewport, &scissor, pipelineLayout);
-    scene->createMaterial(pipeline, pipelineLayout, "defaultMaterial");
-
-    deinitQueue.enqueue([=]() {
-        LOG_CALL(vkDestroyPipeline(device, pipeline, nullptr));
-    });
-
-    // Compiled into the pipeline, no need to have them hanging around any more
-    vkDestroyShaderModule(device, triangleVert, nullptr);
-    vkDestroyShaderModule(device, triangleFrag, nullptr);
 }
 
 void VulkanBackend::initImgui() {

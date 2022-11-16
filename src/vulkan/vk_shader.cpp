@@ -115,7 +115,6 @@ CacheLoadResult<ShaderPassInfo> ShaderPassCache::loadInfo(ShaderStageCreateInfos
             for (uint32_t bindingIdx = 0; bindingIdx < reflectedSet->binding_count; ++bindingIdx) {
                 SpvReflectDescriptorBinding* reflectedBinding = reflectedSet->bindings[bindingIdx];
 
-                // TODO: allow overriding some binding types
                 VkDescriptorSetLayoutBinding binding = descriptorSetLayoutBinding(static_cast<VkDescriptorType>(reflectedBinding->descriptor_type),
                     reflection.shader_stage, reflectedBinding->binding);
                 // TODO: don't quite understand this yet... Multiple descriptors for arrays?
@@ -143,8 +142,7 @@ CacheLoadResult<ShaderPassInfo> ShaderPassCache::loadInfo(ShaderStageCreateInfos
                 continue;
             }
 
-            // TODO: binary search or a map for a faster lookup, n^2 is good for now
-            // perhaps an insertion sort would be nice
+            // No need for any binary search or anything. Unlikely to have many bindings anyways
             for (ReflectedBinding& reflectedBinding : reflectedLayout.bindings) {
                 bool alreadyMerged = false;
                 for (ReflectedBinding& mergedBinding : mergedBindings) {
@@ -165,6 +163,26 @@ CacheLoadResult<ShaderPassInfo> ShaderPassCache::loadInfo(ShaderStageCreateInfos
             }
         }
 
+        for (auto& descriptorOverride : stageInfos.overrides) {
+            for (auto& mergedBinding : mergedBindings) {
+                bool matchesOverride = false;
+                for (auto& bindingName : mergedBinding.names) {
+                    if (bindingName.compare(descriptorOverride.bindingName) == 0) {
+                        matchesOverride = true;
+                        break;
+                    }
+                }
+
+                if (!matchesOverride) {
+                    continue;
+                }
+
+                printf("Overriding %d descriptor type to %d for binding \"%s\"\n",
+                    mergedBinding.binding.descriptorType, descriptorOverride.type, descriptorOverride.bindingName.c_str());
+                mergedBinding.binding.descriptorType = descriptorOverride.type;
+            }
+        }
+
         VkDescriptorSetLayoutBinding* linearBindings = (VkDescriptorSetLayoutBinding*) alloca(sizeof(VkDescriptorSetLayoutBinding) * mergedBindings.size());
         for (size_t i = 0; i < mergedBindings.size(); ++i) {
             linearBindings[i] = mergedBindings[i].binding;
@@ -175,7 +193,7 @@ CacheLoadResult<ShaderPassInfo> ShaderPassCache::loadInfo(ShaderStageCreateInfos
         if (setLayout && setLayout.value() != VK_NULL_HANDLE) {
             mergedSetLayouts.push_back(setLayout.value());
         }
-        passInfo.descriptorSetLayouts.push_back(ShaderPassInfo::DescriptorSetLayout{ setLayout.value(), std::move(mergedBindings) });
+        passInfo.descriptorSetLayouts.push_back(ShaderPassInfo::DescriptorSetLayout{ setIdx, setLayout.value(), std::move(mergedBindings) });
     }
 
     // TODO: there should be a pipeline cache. I believe VK has a built-in one?

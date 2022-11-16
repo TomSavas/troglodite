@@ -22,15 +22,21 @@ struct Camera {
     float horizontalRotationSpeed = 0.005f;
 };
 
-struct MeshInstance {
+struct MeshInstances {
     Mesh mesh;
     std::vector<uint32_t> objectDataIndices;
 };
 
 struct ObjectData {
-    glm::vec3 position;
-    glm::vec3 scale;
-    glm::mat4 rotation;
+    std::vector<glm::vec3> positions;
+    std::vector<glm::vec3> scales;
+    std::vector<glm::mat4> rotations;
+
+    std::vector<bool> isValidModelMatrixCache;
+    std::vector<glm::mat4> modelMatrixCache;
+    bool anyModelMatricesInvalid = true;
+
+    size_t pushBackDefaults();
 };
 
 struct VulkanBackend;
@@ -41,16 +47,8 @@ struct Scene {
     Camera mainCamera;
 
     std::vector<Material*> passMaterials[static_cast<size_t>(PassType::PASS_COUNT)];
-    std::vector<MeshInstance> meshInstances;
-    std::vector<ObjectData> objectData;
-
-    std::vector<RenderObject> renderables;
-
-    std::unordered_map<std::string, TEMPMaterial> materials;
-    std::unordered_map<std::string, Mesh> meshes;
-    std::unordered_map<std::string, Texture> textures;
-
-    TEMPMaterial* createMaterial(VkPipeline pipeline, VkPipelineLayout layout, const std::string& name);
+    std::vector<MeshInstances> meshInstances;
+    ObjectData objectData;
 
     Scene(VulkanBackend* backend = nullptr) : backend(backend) {}
     void initTestScene();

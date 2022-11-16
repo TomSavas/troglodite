@@ -28,16 +28,6 @@ struct Vertex {
     static VertexInputDescription getVertexDescription();
 };
 
-struct Model {
-    //std::vector<Vertex> vertices;
-    //AllocatedBuffer vertexBuffer;
-    std::string name;
-
-    std::vector<Mesh> meshes;
-
-    void loadFromObj(const char* filename, const char* materialDir);
-};
-
 struct Mesh {
     std::string name;
 
@@ -49,3 +39,11 @@ struct Mesh {
 
     void loadFromObj(const char* filename, const char* materialDir);
 };
+
+struct Model {
+    std::string name;
+    std::vector<Mesh> meshes;
+
+    void loadFromObj(const char* filename, const char* materialDir);
+};
+
