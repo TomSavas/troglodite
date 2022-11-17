@@ -127,7 +127,7 @@ VkPipelineLayoutCreateInfo layoutCreateInfo(VkDescriptorSetLayout* descriptorSet
     return info;
 }
 
-VkImageCreateInfo imageCreateInfo(VkFormat format, VkImageUsageFlags usageFlags, VkExtent3D extent) {
+VkImageCreateInfo imageCreateInfo(VkFormat format, VkImageUsageFlags usageFlags, VkExtent3D extent, uint32_t mipLevels) {
     VkImageCreateInfo info = {};
     info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
     info.pNext = nullptr;
@@ -137,7 +137,7 @@ VkImageCreateInfo imageCreateInfo(VkFormat format, VkImageUsageFlags usageFlags,
     info.format = format;
     info.extent = extent;
 
-    info.mipLevels = 1;
+    info.mipLevels = mipLevels;
     info.arrayLayers = 1;
     info.samples = VK_SAMPLE_COUNT_1_BIT;
     info.tiling = VK_IMAGE_TILING_OPTIMAL;
@@ -146,7 +146,7 @@ VkImageCreateInfo imageCreateInfo(VkFormat format, VkImageUsageFlags usageFlags,
     return info;
 }
 
-VkImageViewCreateInfo imageViewCreateInfo(VkFormat format, VkImage image, VkImageAspectFlags aspectFlags) {
+VkImageViewCreateInfo imageViewCreateInfo(VkFormat format, VkImage image, VkImageAspectFlags aspectFlags, uint32_t mipLevels) {
     VkImageViewCreateInfo info = {};
     info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
     info.pNext = nullptr;
@@ -156,7 +156,7 @@ VkImageViewCreateInfo imageViewCreateInfo(VkFormat format, VkImage image, VkImag
     info.image = image;
     info.format = format;
     info.subresourceRange.baseMipLevel = 0;
-    info.subresourceRange.levelCount = 1;
+    info.subresourceRange.levelCount = mipLevels;
     info.subresourceRange.baseArrayLayer = 0;
     info.subresourceRange.layerCount = 1;
     info.subresourceRange.aspectMask = aspectFlags;
@@ -247,7 +247,7 @@ VkSubmitInfo submitInfo(VkCommandBuffer* cmd) {
     return submitInfo;
 }
 
-VkSamplerCreateInfo samplerCreateInfo(VkFilter filters, VkSamplerAddressMode samplerAddressMode) {
+VkSamplerCreateInfo samplerCreateInfo(VkFilter filters, VkSamplerAddressMode samplerAddressMode, float maxMip) {
     VkSamplerCreateInfo info = {};
     info.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
     info.pNext = nullptr;
@@ -257,6 +257,11 @@ VkSamplerCreateInfo samplerCreateInfo(VkFilter filters, VkSamplerAddressMode sam
     info.addressModeU = samplerAddressMode;
     info.addressModeV = samplerAddressMode;
     info.addressModeW = samplerAddressMode;
+
+    info.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+    info.minLod = 0.0;
+    info.maxLod = maxMip;
+    info.mipLodBias = 0.0;
 
     return info;
 }
@@ -372,4 +377,45 @@ VkDescriptorImageInfo descriptorImageInfo(VkSampler sampler, VkImageView view, V
     info.imageLayout = layout;
 
     return info;
+}
+
+VkImageMemoryBarrier imageMemoryBarrier(VkImageLayout oldLayout, VkImageLayout newLayout, VkImage image, VkPipelineStageFlags srcAccessMask, VkPipelineStageFlags dstAccessMask, uint32_t mipLevels) {
+    VkImageSubresourceRange range = {};
+    range.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    range.baseMipLevel = 0;
+    range.levelCount = mipLevels;
+    range.baseArrayLayer = 0;
+    range.layerCount = 1;
+
+    VkImageMemoryBarrier barrier = {};
+    barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    barrier.pNext = nullptr;
+
+    barrier.oldLayout = oldLayout;
+    barrier.newLayout = newLayout;
+    barrier.image = image;
+    barrier.subresourceRange = range;
+
+    barrier.srcAccessMask = srcAccessMask;
+    barrier.dstAccessMask = dstAccessMask;
+
+    return barrier;
+}
+
+VkImageBlit imageBlit(uint32_t srcMip, VkOffset3D srcMipSize, uint32_t dstMip, VkOffset3D dstMipSize) {
+    VkImageBlit blit = {};
+    blit.srcOffsets[0] = {0, 0, 0};
+    blit.srcOffsets[1] = srcMipSize;
+    blit.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    blit.srcSubresource.mipLevel = srcMip;
+    blit.srcSubresource.baseArrayLayer = 0;
+    blit.srcSubresource.layerCount = 1;
+    blit.dstOffsets[0] = {0, 0, 0};
+    blit.dstOffsets[1] = dstMipSize;
+    blit.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    blit.dstSubresource.mipLevel = dstMip;
+    blit.dstSubresource.baseArrayLayer = 0;
+    blit.dstSubresource.layerCount = 1;
+
+    return blit;
 }

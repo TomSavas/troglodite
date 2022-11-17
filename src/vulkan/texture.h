@@ -12,6 +12,8 @@ bool loadFromFile(VulkanBackend& backend, const char* path, AllocatedImage& imag
 struct Texture {
     AllocatedImage image;
     VkImageView view;
+
+    uint32_t mipCount;
 };
 
 struct SampledTexture {
@@ -27,6 +29,7 @@ struct TextureCache {
 
     // TODO: separately cache AllocatedImages, VkImageViews and VkSamplers and combine them
     // as needed.
-    CacheLoadResult<Texture> load(std::string path);
+    // TODO: more ergonomic mip options
+    CacheLoadResult<Texture> load(std::string path, bool generateMips = true);
     CacheLoadResult<SampledTexture> load(std::string path, VkSamplerCreateInfo sampler);
 };
