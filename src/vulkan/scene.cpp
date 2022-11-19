@@ -193,7 +193,7 @@ void Scene::draw(VkCommandBuffer cmd, FrameData& frameData) {
     // TODO: okay, well this performs absolutely horribly. Need to move materials to
     // a per pass array at the very least. 
     for (uint8_t passIndex = 0; passIndex < (uint8_t)PassType::PASS_COUNT; ++passIndex) {
-        for (auto mat : backend->materials->materials) {
+        for (auto& mat : backend->materials->materials) {
             Material& material = mat.second;
 
             ShaderPass* shaderPass = material.perPassShaders[passIndex];

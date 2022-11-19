@@ -138,7 +138,11 @@ void VulkanBackend::deinit() {
 void VulkanBackend::initVulkan() {
     vkb::InstanceBuilder builder;
     vkbInstance = builder.set_app_name("Troglodite")
+#ifdef DEBUG
         .request_validation_layers(true)
+#else //DEBUG
+        .request_validation_layers(false)
+#endif //DEBUG
         .require_api_version(1, 1, 0)
         .use_default_debug_messenger()
         .build()
