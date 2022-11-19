@@ -582,7 +582,7 @@ void VulkanBackend::initDescriptors() {
     VkDescriptorSet cameraDescriptorSets[MAX_FRAMES_IN_FLIGHT];
     globalDescriptorSetLayout = DescriptorSetBuilder::begin(device, *descriptorSetLayoutCache, *descriptorSetAllocator, MAX_FRAMES_IN_FLIGHT)
         .bindBuffers(cameraDescriptorInfos, MAX_FRAMES_IN_FLIGHT, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_VERTEX_BIT, 0)
-        .bindDuplicateBuffer(&sceneParamsDescriptorInfo, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 1)
+        .bindDuplicateBuffer(&sceneParamsDescriptorInfo, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, VK_SHADER_STAGE_FRAGMENT_BIT, 1)
         .build(cameraDescriptorSets);
 
     VkDescriptorSet objectDescriptorSets[MAX_FRAMES_IN_FLIGHT];
@@ -644,10 +644,9 @@ void VulkanBackend::initPipelines() {
     //    }));
     CacheLoadResult<ShaderPassInfo> forwardLitPassInfoResult = shaderPassCache->loadInfo(ShaderPassCache::ShaderStageCreateInfos(
         {
-            //ShaderPassCache::ShaderStageCreateInfo(SHADER_PATH("mvp_transform.vert.glsl"), VK_SHADER_STAGE_VERTEX_BIT),
+            ShaderPassCache::ShaderStageCreateInfo(SHADER_PATH("mvp_transform.vert.glsl"), VK_SHADER_STAGE_VERTEX_BIT),
+            ShaderPassCache::ShaderStageCreateInfo(SHADER_PATH("forward_unlit.frag.glsl"), VK_SHADER_STAGE_FRAGMENT_BIT),
             //ShaderPassCache::ShaderStageCreateInfo(SHADER_PATH("forward_lit.frag.glsl"), VK_SHADER_STAGE_FRAGMENT_BIT),
-            ShaderPassCache::ShaderStageCreateInfo(SHADER_PATH("tri.vert.glsl"), VK_SHADER_STAGE_VERTEX_BIT),
-            ShaderPassCache::ShaderStageCreateInfo(SHADER_PATH("triangle.frag.glsl"), VK_SHADER_STAGE_FRAGMENT_BIT),
         },
         {
             sceneParamsDescriptorOverride,

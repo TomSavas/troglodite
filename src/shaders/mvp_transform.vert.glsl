@@ -12,25 +12,7 @@ layout (set = 0, binding = 0) uniform CameraBuffer {
     mat4 view;
     mat4 projection;
     mat4 viewProjection;
-
-    //mat4 debugCamView;
-    //mat4 debugCamProjection;
-    //mat4 debugCamViewProjection;
 } cameraData;
-
-layout (set = 0, binding = 1) uniform SceneParams {
-    vec4 fogColor; // w exponent
-    vec4 fogDistances; // x for min, y for max, zw unused
-    vec4 ambientColor;
-    vec4 sunlightDirection; // w for sun power
-    vec4 sunlightColor;
-} sceneParams;
-
-layout (push_constant) uniform constants
-{
-    vec4 data;
-    mat4 modelMatrix;
-} pushConstants;
 
 struct ObjectData {
     mat4 modelMatrix;
