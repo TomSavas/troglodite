@@ -16,7 +16,7 @@ CacheLoadResult<Texture> TextureCache::load(std::string path, bool generateMips)
         //printf("Loading cached texture %s\n", path.c_str());
         return CacheLoadResult<Texture>(true, &textureFromCache->second);
     } else {
-        printf("Loading new texture %s\n", path.c_str());
+        //printf("Loading new texture %s\n", path.c_str());
     }
 
     int width;

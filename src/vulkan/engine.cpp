@@ -18,6 +18,7 @@
 #include "vulkan/vk_init_helpers.h"
 #include "vulkan/pipeline_builder.h"
 #include "vulkan/material.h"
+#include "vulkan/renderpass.h"
 
 #define LOG_CALL(code) do {                                      \
         std::cout << "Calling: " #code << std::endl; \
@@ -80,7 +81,6 @@ VkExtent3D glfwFramebufferSize(GLFWwindow* window) {
     backend.initSwapchain();
     backend.initCommandBuffers();
     backend.initDefaultRenderpass();
-    backend.initFramebuffers();
     backend.initSyncStructs();
     backend.initDescriptors();
     backend.initPipelines();
@@ -206,27 +206,6 @@ void VulkanBackend::initSwapchain() {
     swapchainDeinitQueue.enqueue([=]() {
         LOG_CALL(vkDestroySwapchainKHR(device, swapchain, nullptr));
     });
-
-    VkExtent3D depthImageExtent = viewportSize;
-    depthFormat = VK_FORMAT_D32_SFLOAT;
-
-    VkImageCreateInfo depthImageInfo = imageCreateInfo(depthFormat, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, depthImageExtent);
-
-    VmaAllocationCreateInfo depthImageAlloc = {};
-    depthImageAlloc.usage = VMA_MEMORY_USAGE_GPU_ONLY;
-    depthImageAlloc.requiredFlags = VkMemoryPropertyFlags(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-    vmaCreateImage(allocator, &depthImageInfo, &depthImageAlloc, &depthImage.image, &depthImage.allocation, nullptr);
-
-    swapchainDeinitQueue.enqueue([=]() {
-        LOG_CALL(vmaDestroyImage(allocator, depthImage.image, depthImage.allocation));
-    });
-
-    VkImageViewCreateInfo depthViewInfo = imageViewCreateInfo(depthFormat, depthImage.image, VK_IMAGE_ASPECT_DEPTH_BIT);
-    VK_CHECK(vkCreateImageView(device, &depthViewInfo, nullptr, &depthImageView));
-
-    swapchainDeinitQueue.enqueue([=]() {
-        LOG_CALL(vkDestroyImageView(device, depthImageView, nullptr));
-    });
 }
 
 void VulkanBackend::initCommandBuffers() {
@@ -259,127 +238,70 @@ void VulkanBackend::initCommandBuffers() {
 }
 
 void VulkanBackend::initDefaultRenderpass() {
-    // the renderpass will use this color attachment.
-    VkAttachmentDescription colorAttachment = {};
-    //the attachment will have the format needed by the swapchain
-    colorAttachment.format = swapchainImageFormat;
-    //1 sample, we won't be doing MSAA
-    colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
-    // we Clear when this attachment is loaded
-    colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-    // we keep the attachment stored when the renderpass ends
-    colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-    //we don't care about stencil
-    colorAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-    colorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    attachments = new RenderAttachments(*this);
 
-    //we don't know or care about the starting layout of the attachment
-    colorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    // TODO: this should probably be handled MUCH better by a rendegraph. Basically add the main
 
-    //after the renderpass ends, the image has to be on a layout ready for display
-    colorAttachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+    //uint32_t shadowDepthAttachment = attachments->addTextureBacked(Attachments::DefaultDepthAttachmentDescription());
+    //uint32_t shadowMapAttachment = -1;//...?
+    //RenderPass csmShadowRenderpass = RenderPassBuilder::begin("global directional CSM pass")
+    //    .addAttachment(shadowDepthAttachment)
+    //    .addAttachment(shadowMapAttachment)
+    //    .beginSubpass()
+    //        .usesAttachment(shadowDepthAttachment, stageMask, accessMask)
+    //        .usesAttachment(shadowMapAttachment, stageMask, accessMask)
+    //    .endSubpass()
+    //    .build(attachments);
 
-    VkAttachmentReference colorAttachmentRef = {};
-    //attachment number will index into the pAttachments array in the parent renderpass itself
-    colorAttachmentRef.attachment = 0;
-    colorAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    // TODO: allow texture cache to build textures from descriptions. Then add a texture cache to RenderAttachments
+    // and store these textures there
+    Texture* depthTexture = new Texture();
+    {
+        VkExtent3D depthImageExtent = viewportSize;
+        VkImageCreateInfo depthImageInfo = imageCreateInfo(VK_FORMAT_D32_SFLOAT, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, depthImageExtent);
 
-    VkAttachmentDescription depthAttachment = {};
-    depthAttachment.flags = 0;
-    depthAttachment.format = depthFormat;
-    depthAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
-    depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-    depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-    depthAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-    depthAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    depthAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    depthAttachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+        VmaAllocationCreateInfo depthImageAlloc = {};
+        depthImageAlloc.usage = VMA_MEMORY_USAGE_GPU_ONLY;
+        depthImageAlloc.requiredFlags = VkMemoryPropertyFlags(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        vmaCreateImage(allocator, &depthImageInfo, &depthImageAlloc, &depthTexture->image.image, &depthTexture->image.allocation, nullptr);
 
-    VkAttachmentReference depthAttachmentRef = {};
-    //attachment number will index into the pAttachments array in the parent renderpass itself
-    depthAttachmentRef.attachment = 1;
-    depthAttachmentRef.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-
-    //we are going to create 1 subpass, which is the minimum you can do
-    VkSubpassDescription subpass = {};
-    subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-    subpass.colorAttachmentCount = 1;
-    subpass.pColorAttachments = &colorAttachmentRef;
-    subpass.pDepthStencilAttachment = &depthAttachmentRef;
-
-    VkSubpassDependency colorDependency = {};
-    colorDependency.srcSubpass = VK_SUBPASS_EXTERNAL;
-    colorDependency.dstSubpass = 0;
-    colorDependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-    colorDependency.srcAccessMask = 0;
-    colorDependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-    colorDependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-
-    VkSubpassDependency depthDependency = {};
-    depthDependency.srcSubpass = VK_SUBPASS_EXTERNAL;
-    depthDependency.dstSubpass = 0;
-    depthDependency.srcStageMask = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
-    depthDependency.srcAccessMask = 0;
-    depthDependency.dstStageMask = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
-    depthDependency.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-
-    VkSubpassDependency subpassDependencies[] = { colorDependency, depthDependency };
-
-    VkAttachmentDescription attachments[] = { colorAttachment, depthAttachment };
-
-    VkRenderPassCreateInfo renderPassInfo = {};
-    renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
-
-    //connect the color attachment to the info
-    renderPassInfo.attachmentCount = 2;
-    renderPassInfo.pAttachments = &attachments[0];
-    //connect the subpass to the info
-    renderPassInfo.subpassCount = 1;
-    renderPassInfo.pSubpasses = &subpass;
-    renderPassInfo.dependencyCount = 2;
-    renderPassInfo.pDependencies = &subpassDependencies[0];
-
-    VK_CHECK(vkCreateRenderPass(device, &renderPassInfo, nullptr, &defaultRenderpass));
-    deinitQueue.enqueue([=]() {
-        LOG_CALL(vkDestroyRenderPass(device, defaultRenderpass, nullptr));
-    });
-}
-
-void VulkanBackend::initFramebuffers() {
-    //create the framebuffers for the swapchain images. This will connect the render-pass to the images for rendering
-    VkFramebufferCreateInfo fbInfo = {};
-    fbInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-    fbInfo.pNext = nullptr;
-
-    fbInfo.renderPass = defaultRenderpass;
-    fbInfo.attachmentCount = 1;
-    fbInfo.width = viewportSize.width;
-    fbInfo.height = viewportSize.height;
-    fbInfo.layers = 1;
-
-    //grab how many images we have in the swapchain
-    const uint32_t swapchainImageCount = swapchainImages.size();
-    framebuffers = std::vector<VkFramebuffer>(swapchainImageCount);
-
-    //create framebuffers for each of the swapchain image views
-    for (uint32_t i = 0; i < swapchainImageCount; i++) {
-        VkImageView attachments[] = { swapchainImageViews[i], depthImageView };
-
-        fbInfo.attachmentCount = 2;
-        fbInfo.pAttachments = attachments;
-
-        VK_CHECK(vkCreateFramebuffer(device, &fbInfo, nullptr, &framebuffers[i]));
+        VkImageViewCreateInfo depthViewInfo = imageViewCreateInfo(VK_FORMAT_D32_SFLOAT, depthTexture->image.image, VK_IMAGE_ASPECT_DEPTH_BIT);
+        VK_CHECK(vkCreateImageView(device, &depthViewInfo, nullptr, &depthTexture->view));
     }
+    //uint32_t colorAttachment = attachments->addTextureBacked(Attachments::DefaultColorAttachmentDescription());
+    uint32_t depthAttachment = attachments->addTextureBacked(RenderAttachments::defaultDepthAttachmentDescription(), depthTexture);
+    //RenderPass forwardRenderpass = RenderPassBuilder::begin("forward pass")
+    //    .addAttachment(colorAttachment, "color")
+    //    .addAttachment(depthAttachment, "depth")
+    //    //.addExternalAttachment(shadowMapAttachment) // potentially don't need the external thingymabob
+    //    .addSubpass({
+    //        RenderPassBuilder::SubpassAttachmentDesc(colorAttachment, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT),
+    //        RenderPassBuilder::SubpassAttachmentDesc(depthAttachment, VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT, VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT),
+    //        //RenderPassBuilder::SubpassAttachmentDesc(shadowMapAttachment, stageMask, accessMask),
+    //    })
+    //    .build(attachments);
 
-    swapchainDeinitQueue.enqueue([=]() {
-        LOG_CALL(
-            for (size_t i = 0; i < swapchainImageViews.size(); i++) {
-                vkDestroyFramebuffer(device, framebuffers[i], nullptr);
-                // TODO: maybe where it's created?
-                vkDestroyImageView(device, swapchainImageViews[i], nullptr);
-            }
-        );
-    });
+    //uint32_t preBlitOutputAttachment = attachments->add(Attachments::DefaultColorAttachmentDescription(false), colorAttachment);
+    uint32_t outputAttachment = attachments->addOutput(swapchainImages, swapchainImageViews, swapchainImageFormat, viewportSize);
+    outputRenderPass = new RenderPass("", false); // WHY CAN'T I HAVE UNINITIALIZED VARIABLES C++, HUHHHHHHH? And fuck your optionals too
+    *outputRenderPass = RenderPassBuilder::begin("output pass", true)
+        .addAttachment(outputAttachment, "output", defaultColorClearValue())
+        .addAttachment(depthAttachment, "temp depth while not blitting", defaultDepthClearValue())
+        .addSubpass(VK_PIPELINE_BIND_POINT_GRAPHICS, {
+            RenderPassBuilder::SubpassAttachmentDesc(
+                outputAttachment,
+                VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+                VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT
+            ),
+            RenderPassBuilder::SubpassAttachmentDesc(
+                depthAttachment,
+                VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+                VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT
+            ),
+        })
+        .build(device, *attachments, swapchainImages.size());
 }
 
 void VulkanBackend::initSyncStructs() {
@@ -413,6 +335,12 @@ void VulkanBackend::initSyncStructs() {
 void VulkanBackend::draw() {
     VK_CHECK(vkWaitForFences(device, 1, &currentFrame().renderFence, true, 1000000000));
 
+    // TODO: render graph should handle renderpass dispatch. Cmd buffer recording can be done in parallel
+    // For now let's just stupidly iterate through all renderpasses, let them fill in cmd buffers and then 
+    // handle the presentation renderpass
+
+    // For now skipping all other renderpasses
+
     // Request image from the swapchain, one second timeout
     uint32_t swapchainImageIndex;
     VkResult nextImageResult = vkAcquireNextImageKHR(device, swapchain, 1000000000, currentFrame().presentSem, nullptr, &swapchainImageIndex);
@@ -420,16 +348,22 @@ void VulkanBackend::draw() {
     bool swapchainRegenNeeded = nextImageResult == VK_ERROR_OUT_OF_DATE_KHR 
         || nextImageResult == VK_SUBOPTIMAL_KHR
         || swapchainRegenRequested;
-    if (swapchainRegenNeeded) {
+    while (swapchainRegenNeeded) {
         swapchainDeinitQueue.execute();
         initSwapchain();
-        initFramebuffers();
 
+        attachments->recreateOutputAttachment(swapchainImages, swapchainImageViews, swapchainImageFormat, viewportSize);
+        // TODO: resize depth attachment here as well
+        outputRenderPass->rebuildFramebuffers(device, *attachments);
         swapchainRegenRequested = false;
 
         // Re-request the image from recreated swapchain and continue as usual
         VK_CHECK(vkWaitForFences(device, 1, &currentFrame().renderFence, true, 1000000000));
         nextImageResult = vkAcquireNextImageKHR(device, swapchain, 1000000000, currentFrame().presentSem, nullptr, &swapchainImageIndex);
+
+        swapchainRegenNeeded = nextImageResult == VK_ERROR_OUT_OF_DATE_KHR 
+            || nextImageResult == VK_SUBOPTIMAL_KHR
+            || swapchainRegenRequested;
     }
     VK_CHECK(nextImageResult);
 
@@ -445,36 +379,9 @@ void VulkanBackend::draw() {
     VkCommandBufferBeginInfo cmdBeginInfo = commandBufferBeginInfo(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
     VK_CHECK(vkBeginCommandBuffer(cmd, &cmdBeginInfo));
 
-    //make a clear-color from frame number. This will flash with a 120*pi frame period.
-    VkClearValue colorClear;
-    float flash = abs(sin(float(frameNumber) / 120.f));
-    colorClear.color = { { 0.0f, 0.0f, flash, 1.0f } };
-
-    VkClearValue depthClear;
-    depthClear.depthStencil.depth = 1.f;
-
-    //start the main renderpass.
-    //We will use the clear color from above, and the framebuffer of the index the swapchain gave us
-    VkRenderPassBeginInfo rpInfo = {};
-    rpInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-    rpInfo.pNext = nullptr;
-
-    rpInfo.renderPass = defaultRenderpass;
-    rpInfo.renderArea.offset.x = 0;
-    rpInfo.renderArea.offset.y = 0;
-    rpInfo.renderArea.extent = { viewportSize.width, viewportSize.height };
-    rpInfo.framebuffer = framebuffers[swapchainImageIndex];
-
-    viewport.width = viewportSize.width;
-    viewport.height = viewportSize.height;
-    scissor.extent = { viewportSize.width, viewportSize.height };
-
-    //connect clear values
-    VkClearValue clearValues[] = { colorClear, depthClear };
-    rpInfo.clearValueCount = 2;
-    rpInfo.pClearValues = clearValues;
-
+    VkRenderPassBeginInfo rpInfo = outputRenderPass->beginRenderPassInfo(swapchainImageIndex);
     vkCmdBeginRenderPass(cmd, &rpInfo, VK_SUBPASS_CONTENTS_INLINE);
+
     vkCmdSetViewport(cmd, 0, 1, &viewport);
     vkCmdSetScissor(cmd, 0, 1, &scissor);
     scene->draw(cmd, currentFrame());
@@ -514,7 +421,7 @@ void VulkanBackend::draw() {
 
     presentInfo.pImageIndices = &swapchainImageIndex;
 
-    VK_CHECK(vkQueuePresentKHR(graphicsQueue, &presentInfo));
+    vkQueuePresentKHR(graphicsQueue, &presentInfo);
 
     frameNumber++;
     //printf("frame: %d\n", frameNumber);
@@ -660,7 +567,7 @@ void VulkanBackend::initPipelines() {
             //.beginPass(PassType::DIRECTIONAL_SHADOW, csmPassInfoResult.pass, shadowPipelineBuilder, shadowRenderpass)
             //    .perInFlightFramesDescriptors(MAX_FRAMES_IN_FLIGHT, globalPerInFlightFramesDescriptorSets)
             //.endPass()
-            .beginPass(PassType::FORWARD_OPAQUE, forwardLitPassInfoResult.data, forwardPipelineBuilder, /*forwardRenderpass*/defaultRenderpass, viewport, scissor)
+            .beginPass(PassType::FORWARD_OPAQUE, forwardLitPassInfoResult.data, forwardPipelineBuilder, /*forwardRenderpass*/outputRenderPass->renderPass, viewport, scissor)
                 //.perInFlightFramesDescriptorSets(MAX_FRAMES_IN_FLIGHT, globalPerInFlightFramesDescriptorSets)
             .endPass()
         ));
@@ -727,7 +634,7 @@ void VulkanBackend::initImgui() {
     initInfo.ImageCount = 3;
     initInfo.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
 
-    ImGui_ImplVulkan_Init(&initInfo, defaultRenderpass);
+    ImGui_ImplVulkan_Init(&initInfo, outputRenderPass->renderPass);
 
     immediateBlockingSubmit([&](VkCommandBuffer cmd) {
         ImGui_ImplVulkan_CreateFontsTexture(cmd);

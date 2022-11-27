@@ -65,7 +65,7 @@ void Mesh::loadFromObj(const char* filename, const char* materialDir) {
     tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, filename, materialDir);
     //make sure to output the warnings to the console, in case there are issues with the file
     if (!warn.empty()) {
-        std::cout << "WARN: " << warn << std::endl;
+        //std::cout << "WARN: " << warn << std::endl;
     }
     //if we have any error, print it to the console, and break the mesh loading.
     //This happens if the file can't be found or is malformed
@@ -138,7 +138,7 @@ void Model::loadFromObj(const char* filename, const char* materialDir) {
     tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, filename, materialDir);
     //make sure to output the warnings to the console, in case there are issues with the file
     if (!warn.empty()) {
-        std::cout << "WARN: " << warn << std::endl;
+        //std::cout << "WARN: " << warn << std::endl;
     }
     //if we have any error, print it to the console, and break the mesh loading.
     //This happens if the file can't be found or is malformed

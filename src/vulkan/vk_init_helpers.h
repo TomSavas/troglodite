@@ -48,3 +48,6 @@ VkDescriptorImageInfo descriptorImageInfo(VkBuffer buffer, uint64_t offse, uint6
 
 VkImageMemoryBarrier imageMemoryBarrier(VkImageLayout oldLayout, VkImageLayout newLayout, VkImage image, VkPipelineStageFlags srcAccessMask, VkPipelineStageFlags dstAccessMask, uint32_t mipLevels = 1);
 VkImageBlit imageBlit(uint32_t srcMip, VkOffset3D srcMipSize, uint32_t dstMip, VkOffset3D dstMipSize);
+
+VkClearValue defaultColorClearValue();
+VkClearValue defaultDepthClearValue();

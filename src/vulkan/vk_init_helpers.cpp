@@ -419,3 +419,17 @@ VkImageBlit imageBlit(uint32_t srcMip, VkOffset3D srcMipSize, uint32_t dstMip, V
 
     return blit;
 }
+
+VkClearValue defaultColorClearValue() {
+    VkClearValue clear = {};
+    clear.color = { { 0.321f, 0.321f, 0.321f, 1.0f } };
+
+    return clear;
+}
+
+VkClearValue defaultDepthClearValue() {
+    VkClearValue clear = {};
+    clear.depthStencil.depth = 1.f;
+
+    return clear;
+}

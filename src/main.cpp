@@ -96,11 +96,11 @@ int main(void) {
                 ImGui::Text("Frames: %.d", backend.frameNumber);
                 ImGui::Separator();
                 
-                ImGui::Text("CPU: %.9f msec", dt * 1000.f);
-                ImGui::Text("     %.9f Hz", 1.0 / dt);
+                ImGui::Text("CPU: % 11.6f msec", dt * 1000.f);
+                ImGui::Text("     % 11.6f Hz", 1.0 / dt);
                 ImGui::Text("     Avg");
-                ImGui::Text("CPU: %.9f msec", avgFrameTime * 1000.f);
-                ImGui::Text("     %.9f Hz", 1.0 / avgFrameTime);
+                ImGui::Text("CPU: % 11.6f msec", avgFrameTime * 1000.f);
+                ImGui::Text("     % 11.6f Hz", 1.0 / avgFrameTime);
             }
             ImGui::End();
         }
@@ -108,7 +108,6 @@ int main(void) {
         backend.draw();
 
         end = std::chrono::system_clock::now();
-
         // TODO: quick hack -- VK_PRESENT_MODE_FIFO_KHR doesn't work on my 6600XT, so
         // hack the FPS limit with VK_PRESENT_MODE_MAILBOX_KHR
         //usleep(16666);

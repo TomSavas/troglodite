@@ -73,11 +73,13 @@ struct FrameData {
     VkCommandBuffer cmdBuffer;
 };
 
+struct RenderAttachments;
 struct DescriptorSetLayoutCache;
 struct DescriptorSetAllocator;
 struct ShaderModuleCache;
 struct ShaderPassCache;
 struct Materials;
+struct RenderPass;
 struct VulkanBackend { 
     static constexpr int MAX_FRAMES_IN_FLIGHT = 2;
     FrameData inFlightFrames[MAX_FRAMES_IN_FLIGHT];
@@ -118,19 +120,13 @@ struct VulkanBackend {
     VkQueue graphicsQueue;
     uint32_t graphicsQueueFamily;
 
-    VkRenderPass defaultRenderpass;
-    std::vector<VkFramebuffer> framebuffers;
-
     VmaAllocator allocator;
-
-    VkImageView depthImageView;
-    AllocatedImage depthImage;
-
-    VkFormat depthFormat;
 
     int frameNumber;
 
     GLFWwindow* window;
+
+    RenderAttachments* attachments;
 
     DescriptorSetLayoutCache* descriptorSetLayoutCache;
     DescriptorSetAllocator* descriptorSetAllocator;
@@ -140,6 +136,8 @@ struct VulkanBackend {
 
     TextureCache* textureCache;
     Materials* materials;
+
+    RenderPass* outputRenderPass;
 
     // TODO: should be stored along with the descriptor set
     VkDescriptorSetLayout globalDescriptorSetLayout;
@@ -156,7 +154,6 @@ struct VulkanBackend {
     void initSwapchain();
     void initCommandBuffers();
     void initDefaultRenderpass();
-    void initFramebuffers();
     void initSyncStructs();
     void initDescriptors();
     void initPipelines();
