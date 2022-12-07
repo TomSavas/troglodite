@@ -161,9 +161,9 @@ RenderPass RenderPassBuilder::build(VkDevice device, RenderAttachments& attachme
             attachment.dependency.dstSubpass = i;
             // TODO: might cause a stall -- wait until the pipeline hits this stage again
             // will do for the moment
-            attachment.dependency.srcStageMask = matchingDesc->dstStageMask;
-            attachment.dependency.srcAccessMask = 0;
+            attachment.dependency.srcStageMask = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
             attachment.dependency.dstStageMask = matchingDesc->dstStageMask;
+            attachment.dependency.srcAccessMask = VK_ACCESS_NONE;
             attachment.dependency.dstAccessMask = matchingDesc->dstAccessMask;
 
             if (!firstDependency) {

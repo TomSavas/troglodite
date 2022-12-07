@@ -33,7 +33,7 @@ struct RenderAttachments {
     std::vector<RenderAttachment> attachments;
     int64_t outputAttachmentIndex;
 
-    RenderAttachments(VulkanBackend& backend) : attachmentTextures(backend), outputAttachmentIndex(-1) {}
+    RenderAttachments(VulkanBackend& backend) : outputAttachmentIndex(-1) {}
 
     uint32_t addTextureBacked(RenderAttachmentDesc&& description, Texture* texture);
     uint32_t addTextureBacked(RenderAttachmentDesc&& description, std::vector<Texture*>& textures);
