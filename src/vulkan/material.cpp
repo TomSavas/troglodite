@@ -19,7 +19,7 @@ PassBuildingMaterials& PassBuildingMaterials::perInFlightFramesDescriptorSets(si
     return MaterialBuilder(name);
 }
 
-MaterialBuilder& MaterialBuilder::addPass(PassType type, ShaderPassInfo* passInfo, PipelineBuilder builder, VkRenderPass renderpass, VkViewport& viewport, VkRect2D& scissor) {
+MaterialBuilder& MaterialBuilder::addPass(PassType type, ShaderPassInfo* passInfo, PipelineBuilder builder, VkRenderPass renderpass, VkViewport* viewport, VkRect2D* scissor) {
     assert(passInfo != nullptr);
 
     for (size_t i = 0; i < passInfo->stages.size(); ++i) {
@@ -31,7 +31,7 @@ MaterialBuilder& MaterialBuilder::addPass(PassType type, ShaderPassInfo* passInf
     return *this;
 }
 
-PassBuildingMaterials& MaterialBuilder::beginPass(PassType type, ShaderPassInfo* passInfo, PipelineBuilder builder, VkRenderPass renderpass, VkViewport& viewport, VkRect2D& scissor) {
+PassBuildingMaterials& MaterialBuilder::beginPass(PassType type, ShaderPassInfo* passInfo, PipelineBuilder builder, VkRenderPass renderpass, VkViewport* viewport, VkRect2D* scissor) {
     assert(passInfo != nullptr);
 
     for (size_t i = 0; i < passInfo->stages.size(); ++i) {
@@ -39,6 +39,15 @@ PassBuildingMaterials& MaterialBuilder::beginPass(PassType type, ShaderPassInfo*
     }
 
     return buildingMaterials.emplace_back(*this, type, passInfo, builder, renderpass, viewport, scissor);
+}
+
+PassBuildingMaterials& MaterialBuilder::beginPass(PassType type, CacheLoadResult<ShaderPassInfo> passInfo, PipelineBuilder builder, VkRenderPass renderpass, VkViewport* viewport, VkRect2D* scissor) {
+    if (!passInfo.success) {
+        printf("Failed beginning pass\n");
+        return MaterialBuilder::dummyBuildingMaterials;
+    }
+
+    return beginPass(type, passInfo.data, builder, renderpass, viewport, scissor);
 }
 
 MaterialBuilder& MaterialBuilder::addDefaultTexture(std::string name, std::string path) {

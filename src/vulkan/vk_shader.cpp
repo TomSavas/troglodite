@@ -33,9 +33,15 @@ CacheLoadResult<ShaderModule> ShaderModuleCache::load(ShaderPath path) {
     }
     printf("Loading new module %s - 0x%lx\n", path.filename.c_str(), path.hash());
 
+    std::vector<uint32_t> spirvCode = readFile(path.spirvPath);
+    if (spirvCode.empty()) {
+        printf("Failed reading SPIRV source from %s\n", path.filename.c_str());
+        return CacheLoadResult<ShaderModule>(false, nullptr);
+    }
+
     cache.emplace(path, ShaderModule(path));
     ShaderModule& module = cache.at(path);
-    module.spirvCode = readFile(path.spirvPath);
+    module.spirvCode = std::move(spirvCode);
     // TODO: add source code here for debugging
     
     VkShaderModuleCreateInfo createInfo = {};
@@ -214,7 +220,7 @@ CacheLoadResult<ShaderPass> ShaderPassCache::loadPass(PassBuildingMaterials& pas
     ShaderPass& pass = passCache[*passBuildingMaterials.info];
     pass.info = passBuildingMaterials.info;
     pass.pipeline = passBuildingMaterials.pipelineBuilder.build(device, passBuildingMaterials.renderpass,
-        &passBuildingMaterials.viewport, &passBuildingMaterials.scissor, passBuildingMaterials.info->layout);
+        passBuildingMaterials.viewport, passBuildingMaterials.scissor, passBuildingMaterials.info->layout);
 
     return CacheLoadResult<ShaderPass>(true, &pass);
 }

@@ -31,6 +31,7 @@ struct RenderAttachment {
 
 struct RenderAttachments {
     std::vector<RenderAttachment> attachments;
+    
     int64_t outputAttachmentIndex;
 
     RenderAttachments(VulkanBackend& backend) : outputAttachmentIndex(-1) {}
@@ -42,7 +43,7 @@ struct RenderAttachments {
 
     void recreateOutputAttachment(std::vector<VkImage>& swapchainImages, std::vector<VkImageView>& swapchainImageViews, VkFormat swapchainImageFormat, VkExtent3D outputSize);
 
-    static RenderAttachmentDesc defaultColorAttachmentDescription(bool clearOnLoad = true);
+    static RenderAttachmentDesc defaultColorAttachmentDescription(bool clearOnLoad = true, bool isOutput = false);
     static RenderAttachmentDesc defaultDepthAttachmentDescription(bool clearOnLoad = true);
 };
 
@@ -96,13 +97,14 @@ struct RenderPassBuilder {
         VkImageLayout layout;
         VkPipelineStageFlags dstStageMask;
         VkAccessFlags dstAccessMask;
+        bool graphicPipelineAttachment;
 
         bool consumedDuringBuilding;
 
         SubpassAttachmentDesc(uint32_t attachment, VkImageLayout layout, VkPipelineStageFlags dstStageMask,
-            VkAccessFlags dstAccessMask)
+            VkAccessFlags dstAccessMask, bool graphicPipelineAttachment = true)
             : attachment(attachment), layout(layout), dstStageMask(dstStageMask), dstAccessMask(dstAccessMask),
-            consumedDuringBuilding(false) {}
+            graphicPipelineAttachment(graphicPipelineAttachment), consumedDuringBuilding(false) {}
     };
     struct SubpassDesc {
         std::string name;

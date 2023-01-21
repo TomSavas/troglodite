@@ -25,7 +25,9 @@ VkPipelineVertexInputStateCreateInfo vertexInputStateCreateInfo() {
     info.pNext = nullptr;
 
     info.vertexBindingDescriptionCount = 0;
+    info.pVertexBindingDescriptions = nullptr;
     info.vertexAttributeDescriptionCount = 0;
+    info.pVertexAttributeDescriptions = nullptr;
 
     return info;
 }
@@ -53,7 +55,7 @@ VkPipelineInputAssemblyStateCreateInfo inputAssemblyCreateInfo(VkPrimitiveTopolo
     return info;
 }
 
-VkPipelineRasterizationStateCreateInfo rasterizationStateCreateInfo(VkPolygonMode polygonMode) {
+VkPipelineRasterizationStateCreateInfo rasterizationStateCreateInfo(VkPolygonMode polygonMode, VkCullModeFlagBits cullMode, VkFrontFace frontFace) {
     VkPipelineRasterizationStateCreateInfo info = {};
     info.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
     info.pNext = nullptr;
@@ -65,8 +67,8 @@ VkPipelineRasterizationStateCreateInfo rasterizationStateCreateInfo(VkPolygonMod
     info.polygonMode = polygonMode;
     info.lineWidth = 1.0f;
     //no backface cull
-    info.cullMode = VK_CULL_MODE_NONE;
-    info.frontFace = VK_FRONT_FACE_CLOCKWISE;
+    info.cullMode = cullMode;
+    info.frontFace = frontFace;
     //no depth bias
     info.depthBiasEnable = VK_FALSE;
     info.depthBiasConstantFactor = 0.0f;

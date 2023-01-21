@@ -190,6 +190,7 @@ void VulkanBackend::initSwapchain() {
     vkb::SwapchainBuilder builder { gpu, device, surface };
     vkb::Swapchain vkbSwapchain = builder
         .use_default_format_selection()
+        .add_image_usage_flags(VK_IMAGE_USAGE_TRANSFER_DST_BIT) // So that blitting to output is possible
         //.set_desired_present_mode(VK_PRESENT_MODE_FIFO_KHR)
         .set_desired_present_mode(VK_PRESENT_MODE_MAILBOX_KHR)
         //.set_desired_present_mode(VK_PRESENT_MODE_FIFO_RELAXED_KHR)
@@ -255,41 +256,47 @@ void VulkanBackend::initDefaultRenderpass() {
 
     // TODO: allow texture cache to build textures from descriptions. Then add a texture cache to RenderAttachments
     // and store these textures there
+    Texture* renderTexture = new Texture();
+    {
+        renderTexture->image.extent = viewportSize;
+        renderTexture->mipCount = 1;
+
+        VkImageCreateInfo imgInfo = imageCreateInfo(VK_FORMAT_B8G8R8A8_SRGB, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, viewportSize);
+
+        VmaAllocationCreateInfo imgAlloc = {};
+        imgAlloc.usage = VMA_MEMORY_USAGE_GPU_ONLY;
+        imgAlloc.requiredFlags = VkMemoryPropertyFlags(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        vmaCreateImage(allocator, &imgInfo, &imgAlloc, &renderTexture->image.image, &renderTexture->image.allocation, nullptr);
+
+        VkImageViewCreateInfo viewInfo = imageViewCreateInfo(VK_FORMAT_B8G8R8A8_SRGB, renderTexture->image.image, VK_IMAGE_ASPECT_COLOR_BIT);
+        VK_CHECK(vkCreateImageView(device, &viewInfo, nullptr, &renderTexture->view));
+    }
     Texture* depthTexture = new Texture();
     {
-        VkExtent3D depthImageExtent = viewportSize;
-        VkImageCreateInfo depthImageInfo = imageCreateInfo(VK_FORMAT_D32_SFLOAT, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, depthImageExtent);
+        depthTexture->image.extent = viewportSize;
+        depthTexture->mipCount = 1;
 
-        VmaAllocationCreateInfo depthImageAlloc = {};
-        depthImageAlloc.usage = VMA_MEMORY_USAGE_GPU_ONLY;
-        depthImageAlloc.requiredFlags = VkMemoryPropertyFlags(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-        vmaCreateImage(allocator, &depthImageInfo, &depthImageAlloc, &depthTexture->image.image, &depthTexture->image.allocation, nullptr);
+        VkImageCreateInfo imgInfo = imageCreateInfo(VK_FORMAT_D32_SFLOAT, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, viewportSize);
 
-        VkImageViewCreateInfo depthViewInfo = imageViewCreateInfo(VK_FORMAT_D32_SFLOAT, depthTexture->image.image, VK_IMAGE_ASPECT_DEPTH_BIT);
-        VK_CHECK(vkCreateImageView(device, &depthViewInfo, nullptr, &depthTexture->view));
+        VmaAllocationCreateInfo imgAlloc = {};
+        imgAlloc.usage = VMA_MEMORY_USAGE_GPU_ONLY;
+        imgAlloc.requiredFlags = VkMemoryPropertyFlags(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        vmaCreateImage(allocator, &imgInfo, &imgAlloc, &depthTexture->image.image, &depthTexture->image.allocation, nullptr);
+
+        VkImageViewCreateInfo viewInfo = imageViewCreateInfo(VK_FORMAT_D32_SFLOAT, depthTexture->image.image, VK_IMAGE_ASPECT_DEPTH_BIT);
+        VK_CHECK(vkCreateImageView(device, &viewInfo, nullptr, &depthTexture->view));
     }
-    //uint32_t colorAttachment = attachments->addTextureBacked(Attachments::DefaultColorAttachmentDescription());
+    //uint32_t colorAttachment = attachments->addTextureBacked(RenderAttachments::defaultColorAttachmentDescription(false), renderTexture);
+    uint32_t colorAttachment = attachments->addTextureBacked(RenderAttachments::defaultColorAttachmentDescription(), renderTexture);
+    //uint32_t colorAttachment = attachments->addOutput(swapchainImages, swapchainImageViews, swapchainImageFormat, viewportSize);
     uint32_t depthAttachment = attachments->addTextureBacked(RenderAttachments::defaultDepthAttachmentDescription(), depthTexture);
-    //RenderPass forwardRenderpass = RenderPassBuilder::begin("forward pass")
-    //    .addAttachment(colorAttachment, "color")
-    //    .addAttachment(depthAttachment, "depth")
-    //    //.addExternalAttachment(shadowMapAttachment) // potentially don't need the external thingymabob
-    //    .addSubpass({
-    //        RenderPassBuilder::SubpassAttachmentDesc(colorAttachment, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT),
-    //        RenderPassBuilder::SubpassAttachmentDesc(depthAttachment, VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT, VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT),
-    //        //RenderPassBuilder::SubpassAttachmentDesc(shadowMapAttachment, stageMask, accessMask),
-    //    })
-    //    .build(attachments);
-
-    //uint32_t preBlitOutputAttachment = attachments->add(Attachments::DefaultColorAttachmentDescription(false), colorAttachment);
-    uint32_t outputAttachment = attachments->addOutput(swapchainImages, swapchainImageViews, swapchainImageFormat, viewportSize);
-    outputRenderPass = new RenderPass("", false); // WHY CAN'T I HAVE UNINITIALIZED VARIABLES C++, HUHHHHHHH? And fuck your optionals too
-    *outputRenderPass = RenderPassBuilder::begin("output pass", true)
-        .addAttachment(outputAttachment, "output", defaultColorClearValue())
-        .addAttachment(depthAttachment, "temp depth while not blitting", defaultDepthClearValue())
+    RenderPass forwardRenderpass = RenderPassBuilder::begin("forward pass")
+        .addAttachment(colorAttachment, "color output", defaultColorClearValue())
+        .addAttachment(depthAttachment, "depth", defaultDepthClearValue())
+        //.addExternalAttachment(shadowMapAttachment) // potentially don't need the external thingymabob
         .addSubpass(VK_PIPELINE_BIND_POINT_GRAPHICS, {
             RenderPassBuilder::SubpassAttachmentDesc(
-                outputAttachment,
+                colorAttachment,
                 VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
                 VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
                 VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT
@@ -301,7 +308,35 @@ void VulkanBackend::initDefaultRenderpass() {
                 VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT
             ),
         })
+        .build(device, *attachments);
+    renderPasses.push_back(std::move(forwardRenderpass));
+    printf("done constructing normal renderpass\n");
+
+    uint32_t preBlitOutputAttachment = attachments->add(RenderAttachments::defaultColorAttachmentDescription(false, true), colorAttachment);
+    uint32_t outputAttachment = attachments->addOutput(swapchainImages, swapchainImageViews, swapchainImageFormat, viewportSize);
+    outputRenderPass = new RenderPass("", false); // WHY CAN'T I HAVE UNINITIALIZED VARIABLES C++, HUHHHHHHH? And fuck your optionals too
+    *outputRenderPass = RenderPassBuilder::begin("output pass", true)
+        .addAttachment(outputAttachment, "presentation output", defaultColorClearValue())
+        .addAttachment(preBlitOutputAttachment, "output", defaultColorClearValue())
+        .addSubpass(VK_PIPELINE_BIND_POINT_GRAPHICS, {
+            RenderPassBuilder::SubpassAttachmentDesc(
+                outputAttachment,
+                VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT
+                //VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+                //VK_PIPELINE_STAGE_NONE,
+                //VK_ACCESS_NONE
+            ),
+            RenderPassBuilder::SubpassAttachmentDesc(
+                preBlitOutputAttachment,
+                VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                VK_ACCESS_SHADER_READ_BIT
+            ),
+        })
         .build(device, *attachments, swapchainImages.size());
+    printf("done constructing output renderpass\n");
 }
 
 void VulkanBackend::initSyncStructs() {
@@ -375,24 +410,41 @@ void VulkanBackend::draw() {
     //naming it cmd for shorter writing
     VkCommandBuffer cmd = currentFrame().cmdBuffer;
 
-    //begin the command buffer recording. We will use this command buffer exactly once, so we want to let Vulkan know that
+    //printf("renderpass 0\n");
     VkCommandBufferBeginInfo cmdBeginInfo = commandBufferBeginInfo(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
     VK_CHECK(vkBeginCommandBuffer(cmd, &cmdBeginInfo));
 
-    VkRenderPassBeginInfo rpInfo = outputRenderPass->beginRenderPassInfo(swapchainImageIndex);
+    VkRenderPassBeginInfo rpInfo = renderPasses[0].beginRenderPassInfo(swapchainImageIndex);
     vkCmdBeginRenderPass(cmd, &rpInfo, VK_SUBPASS_CONTENTS_INLINE);
 
     vkCmdSetViewport(cmd, 0, 1, &viewport);
     vkCmdSetScissor(cmd, 0, 1, &scissor);
     scene->draw(cmd, currentFrame());
+    vkCmdEndRenderPass(cmd);
+
+    // TODO: record once and then reuse
+    rpInfo = outputRenderPass->beginRenderPassInfo(swapchainImageIndex);
+    vkCmdBeginRenderPass(cmd, &rpInfo, VK_SUBPASS_CONTENTS_INLINE);
+    // Blit existing to output 
+    {
+        ShaderPass* blitShaderPass = materials->materials["blit"].perPassShaders[(int)PassType::COMPOSIT];
+        assert(blitShaderPass != nullptr);
+
+        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, blitShaderPass->pipeline);
+        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, blitShaderPass->info->layout,
+                2, 1, &blitTextureDescriptorSet, 0, nullptr);
+
+        vkCmdSetViewport(cmd, 0, 1, &viewport);
+        vkCmdSetScissor(cmd, 0, 1, &scissor);
+
+        // Smart way of rendering a fullscreen image with a single triangle: https://www.saschawillems.de/blog/2016/08/13/vulkan-tutorial-on-rendering-a-fullscreen-quad-without-buffers/
+        vkCmdDraw(cmd, 3, 1, 0, 0);
+    }
     ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), cmd); // TODO: move out to UI pass, or something above that
     vkCmdEndRenderPass(cmd);
+
     //finalize the command buffer (we can no longer add commands, but it can now be executed)
     VK_CHECK(vkEndCommandBuffer(cmd));
-
-    //prepare the submission to the queue.
-    //we want to wait on the _presentSemaphore, as that semaphore is signaled when the swapchain is ready
-    //we will signal the _renderSemaphore, to signal that rendering has finished
 
     VkSubmitInfo submit = submitInfo(&cmd);
     VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
@@ -520,6 +572,7 @@ void VulkanBackend::initPipelines() {
     shaderModuleCache = new ShaderModuleCache(device);
     shaderPassCache = new ShaderPassCache(device, *shaderModuleCache, *descriptorSetLayoutCache);
     materials = new Materials(*shaderPassCache);
+    samplerCache = new SamplerCache(*this);
 
     PipelineBuilder forwardPipelineBuilder;
     VertexInputDescription vertexDescription = Vertex::getVertexDescription();
@@ -567,12 +620,33 @@ void VulkanBackend::initPipelines() {
             //.beginPass(PassType::DIRECTIONAL_SHADOW, csmPassInfoResult.pass, shadowPipelineBuilder, shadowRenderpass)
             //    .perInFlightFramesDescriptors(MAX_FRAMES_IN_FLIGHT, globalPerInFlightFramesDescriptorSets)
             //.endPass()
-            .beginPass(PassType::FORWARD_OPAQUE, forwardLitPassInfoResult.data, forwardPipelineBuilder, /*forwardRenderpass*/outputRenderPass->renderPass, viewport, scissor)
+            .beginPass(PassType::FORWARD_OPAQUE, forwardLitPassInfoResult.data, forwardPipelineBuilder, /*forwardRenderpass*/renderPasses[0].renderPass, &viewport, &scissor)
                 //.perInFlightFramesDescriptorSets(MAX_FRAMES_IN_FLIGHT, globalPerInFlightFramesDescriptorSets)
             .endPass()
         ));
     } else {
         printf("Failed creating material \"%s\" - failed retrieving shaders\n", Materials::DEFAULT_LIT);
+    }
+
+    PipelineBuilder blitPipelineBuilder;
+    blitPipelineBuilder.vertexInputInfo = vertexInputStateCreateInfo();
+    blitPipelineBuilder.inputAssembly = inputAssemblyCreateInfo(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+    blitPipelineBuilder.rasterizer = rasterizationStateCreateInfo(VK_POLYGON_MODE_FILL, VK_CULL_MODE_FRONT_BIT, VK_FRONT_FACE_COUNTER_CLOCKWISE);
+    blitPipelineBuilder.multisampling = multisampleStateCreateInfo();
+    blitPipelineBuilder.colorBlendAttachment = colorBlendAttachmentState();
+    blitPipelineBuilder.depthStencil = depthStencilCreateInfo(false, false);
+    CacheLoadResult<ShaderPassInfo> blitPassInfoResult = shaderPassCache->loadInfo(ShaderPassCache::ShaderStageCreateInfos(
+        {
+            ShaderPassCache::ShaderStageCreateInfo(SHADER_PATH("fullscreen.vert.glsl"), VK_SHADER_STAGE_VERTEX_BIT),
+            ShaderPassCache::ShaderStageCreateInfo(SHADER_PATH("blit.frag.glsl"), VK_SHADER_STAGE_FRAGMENT_BIT),
+        }));
+    if (blitPassInfoResult.success) {
+        materials->enqueue(std::move(MaterialBuilder::begin("blit")
+            .beginPass(PassType::COMPOSIT, blitPassInfoResult.data, blitPipelineBuilder, outputRenderPass->renderPass, &viewport, &scissor)
+            .endPass()
+        ));
+    } else {
+        printf("Failed creating material \"%s\" - failed retrieving shaders\n", "blit");
     }
 
     // TODO: redo materials internals to support SoA for usage with vkCreateGraphicsPipelines
@@ -588,6 +662,16 @@ void VulkanBackend::initPipelines() {
         printf("failed creating default texture\n");
         assert(false);
     }
+
+    VkDescriptorImageInfo imageInfo = {};
+    imageInfo.sampler = *samplerCache->load(samplerCreateInfo(VK_FILTER_NEAREST, VK_SAMPLER_ADDRESS_MODE_REPEAT)).data;
+    imageInfo.imageView = attachments->attachments[outputRenderPass->attachmentIndices[1]].textures[0]->view;
+    imageInfo.imageView = attachments->attachments[outputRenderPass->attachmentIndices[1]].textures[0]->view;
+    imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+    DescriptorSetBuilder::begin(device, *descriptorSetLayoutCache, *descriptorSetAllocator)
+        .bindImages(&imageInfo, 1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT, 0)
+        .build(&blitTextureDescriptorSet);
 }
 
 void VulkanBackend::initImgui() {
@@ -634,6 +718,7 @@ void VulkanBackend::initImgui() {
     initInfo.ImageCount = 3;
     initInfo.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
 
+    //ImGui_ImplVulkan_Init(&initInfo, renderPasses[0].renderPass);
     ImGui_ImplVulkan_Init(&initInfo, outputRenderPass->renderPass);
 
     immediateBlockingSubmit([&](VkCommandBuffer cmd) {

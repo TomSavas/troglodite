@@ -19,7 +19,7 @@ uint32_t RenderAttachments::add(RenderAttachmentDesc&& description, uint32_t tex
 
 uint32_t RenderAttachments::addOutput(std::vector<VkImage>& swapchainImages, std::vector<VkImageView>& swapchainImageViews, VkFormat swapchainImageFormat, VkExtent3D outputSize) {
     assert(outputAttachmentIndex == -1);
-    RenderAttachmentDesc attachmentDesc(defaultColorAttachmentDescription().description, RenderAttachmentType::COLOR, true);
+    RenderAttachmentDesc attachmentDesc(defaultColorAttachmentDescription(true, true).description, RenderAttachmentType::COLOR, true);
 
     RenderAttachment& outputAttachment = attachments.emplace_back(RenderAttachment{ attachmentDesc });
     outputAttachmentIndex = attachments.size() - 1;
@@ -49,7 +49,7 @@ void RenderAttachments::recreateOutputAttachment(std::vector<VkImage>& swapchain
     }
 }
 
-/*static*/ RenderAttachmentDesc RenderAttachments::defaultColorAttachmentDescription(bool clearOnLoad) {
+/*static*/ RenderAttachmentDesc RenderAttachments::defaultColorAttachmentDescription(bool clearOnLoad, bool isOutput) {
     VkAttachmentDescription attachment = {};
     attachment.flags = 0;
     attachment.format = VK_FORMAT_B8G8R8A8_SRGB;
@@ -58,8 +58,8 @@ void RenderAttachments::recreateOutputAttachment(std::vector<VkImage>& swapchain
     attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
     attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
     attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    attachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    attachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+    attachment.initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    attachment.finalLayout = isOutput ? VK_IMAGE_LAYOUT_PRESENT_SRC_KHR : VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
     return RenderAttachmentDesc(attachment, RenderAttachmentType::COLOR);
 }
@@ -80,6 +80,12 @@ void RenderAttachments::recreateOutputAttachment(std::vector<VkImage>& swapchain
 }
 
 VkRenderPassBeginInfo RenderPass::beginRenderPassInfo(size_t framebufferIndex) {
+    if (framebufferIndex >= framebuffers.size()) {
+        //printf("Out of bounds framebuffer requested: %d, max: %d. Wrapping to %d...\n", framebufferIndex,
+            //framebuffers.size(), framebufferIndex % framebuffers.size());
+        framebufferIndex = framebufferIndex % framebuffers.size();
+    }
+
     VkRenderPassBeginInfo info = {};
     info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
     info.pNext = nullptr;
@@ -158,7 +164,7 @@ RenderPass RenderPassBuilder::build(VkDevice device, RenderAttachments& attachme
 
             attachment.dependency = {};
             attachment.dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
-            attachment.dependency.dstSubpass = i;
+            attachment.dependency.dstSubpass = matchingDesc->graphicPipelineAttachment ? i : VK_SUBPASS_EXTERNAL;
             // TODO: might cause a stall -- wait until the pipeline hits this stage again
             // will do for the moment
             attachment.dependency.srcStageMask = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
@@ -215,8 +221,6 @@ RenderPass RenderPassBuilder::build(VkDevice device, RenderAttachments& attachme
                     break;
             }
         }
-
-        assert(colorAttachments.size() == depthStencilAttachments.size());
 
         VkSubpassDescription vkSubpassDesc = {};
         vkSubpassDesc.pipelineBindPoint = subpass.bindPoint;

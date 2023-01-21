@@ -15,6 +15,8 @@
 #include "vulkan/mesh.h"
 #include "vulkan/scene.h"
 #include "vulkan/types.h"
+#include "vulkan/renderpass.h"
+#include "vulkan/samplers.h"
 
 #define VK_CHECK(x)                                                \
     do                                                             \
@@ -133,11 +135,15 @@ struct VulkanBackend {
 
     ShaderModuleCache* shaderModuleCache;
     ShaderPassCache* shaderPassCache;
+    SamplerCache* samplerCache;
 
     TextureCache* textureCache;
     Materials* materials;
 
     RenderPass* outputRenderPass;
+    std::vector<RenderPass> renderPasses;
+
+    VkDescriptorSet blitTextureDescriptorSet;
 
     // TODO: should be stored along with the descriptor set
     VkDescriptorSetLayout globalDescriptorSetLayout;

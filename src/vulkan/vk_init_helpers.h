@@ -10,7 +10,7 @@ VkPipelineShaderStageCreateInfo shaderStageCreateInfo(ShaderStage& shaderStage);
 VkPipelineVertexInputStateCreateInfo vertexInputStateCreateInfo();
 VkPipelineVertexInputStateCreateInfo vertexInputStateCreateInfo(VertexInputDescription& description);
 VkPipelineInputAssemblyStateCreateInfo inputAssemblyCreateInfo(VkPrimitiveTopology topology);
-VkPipelineRasterizationStateCreateInfo rasterizationStateCreateInfo(VkPolygonMode polygonMode);
+VkPipelineRasterizationStateCreateInfo rasterizationStateCreateInfo(VkPolygonMode polygonMode, VkCullModeFlagBits cullMode = VK_CULL_MODE_NONE, VkFrontFace frontFace = VK_FRONT_FACE_CLOCKWISE);
 VkPipelineMultisampleStateCreateInfo multisampleStateCreateInfo();
 VkPipelineColorBlendAttachmentState colorBlendAttachmentState();
 VkPipelineLayoutCreateInfo layoutCreateInfo();
@@ -19,7 +19,7 @@ VkPipelineLayoutCreateInfo layoutCreateInfo(VkDescriptorSetLayout* descriptorSet
 VkImageCreateInfo imageCreateInfo(VkFormat format, VkImageUsageFlags usageFlags, VkExtent3D extent, uint32_t mipLevels = 1);
 VkImageViewCreateInfo imageViewCreateInfo(VkFormat format, VkImage image, VkImageAspectFlags aspectFlags, uint32_t mipLevels = 1);
 
-VkPipelineDepthStencilStateCreateInfo depthStencilCreateInfo(bool depthTest, bool depthWrite, VkCompareOp compareOp);
+VkPipelineDepthStencilStateCreateInfo depthStencilCreateInfo(bool depthTest, bool depthWrite, VkCompareOp compareOp = VK_COMPARE_OP_LESS_OR_EQUAL);
 
 VkDescriptorSetLayoutBinding descriptorSetLayoutBinding(VkDescriptorType type, VkShaderStageFlags stageFlags, uint32_t binding);
 VkWriteDescriptorSet writeDescriptorBuffer(VkDescriptorType type, VkDescriptorSet dstSet, VkDescriptorBufferInfo* bufferInfo, uint32_t binding);

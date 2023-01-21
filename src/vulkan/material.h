@@ -45,14 +45,16 @@ struct PassBuildingMaterials {
     VkRenderPass renderpass;
 
     //TEMP: 
-    VkViewport& viewport;
-    VkRect2D& scissor;
+    VkViewport* viewport;
+    VkRect2D* scissor;
 
     std::vector<uint8_t> perInFlightFrameDescriptorSetIndices;
 
+    PassBuildingMaterials(MaterialBuilder& builder) : builder(builder) {}
+
     PassBuildingMaterials(MaterialBuilder& builder, PassType type, ShaderPassInfo* info,
-        PipelineBuilder pipelineBuilder, VkRenderPass renderpass, VkViewport& viewport,
-        VkRect2D& scissor) : builder(builder), type(type), info(info), pipelineBuilder(pipelineBuilder),
+        PipelineBuilder pipelineBuilder, VkRenderPass renderpass, VkViewport* viewport,
+        VkRect2D* scissor) : builder(builder), type(type), info(info), pipelineBuilder(pipelineBuilder),
             renderpass(renderpass), viewport(viewport), scissor(scissor) {}
 
     MaterialBuilder& endPass();
@@ -65,15 +67,18 @@ struct MaterialBuilder {
     std::vector<PassBuildingMaterials> buildingMaterials;
     std::unordered_map<std::string, std::string> defaultTextures;
 
+    PassBuildingMaterials dummyBuildingMaterials;
+
     static MaterialBuilder begin(std::string name);
-    MaterialBuilder& addPass(PassType type, ShaderPassInfo* pass, PipelineBuilder builder, VkRenderPass renderpass, VkViewport& viewport, VkRect2D& scissor);
+    MaterialBuilder& addPass(PassType type, ShaderPassInfo* pass, PipelineBuilder builder, VkRenderPass renderpass, VkViewport* viewport, VkRect2D* scissor);
 
     MaterialBuilder& addDefaultTexture(std::string name, std::string path);
 
-    PassBuildingMaterials& beginPass(PassType type, ShaderPassInfo* pass, PipelineBuilder builder, VkRenderPass renderpass, VkViewport& viewport, VkRect2D& scissor);
+    PassBuildingMaterials& beginPass(PassType type, ShaderPassInfo* pass, PipelineBuilder builder, VkRenderPass renderpass, VkViewport* viewport, VkRect2D* scissor);
+    PassBuildingMaterials& beginPass(PassType type, CacheLoadResult<ShaderPassInfo> pass, PipelineBuilder builder, VkRenderPass renderpass, VkViewport* viewport, VkRect2D* scissor);
 
 private:
-    MaterialBuilder(std::string materialName) : materialName(materialName) {}
+    MaterialBuilder(std::string materialName) : materialName(materialName), dummyBuildingMaterials(*this) {}
 };
 
 struct MaterialInstance {
