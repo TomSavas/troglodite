@@ -310,7 +310,6 @@ void VulkanBackend::initDefaultRenderpass() {
         })
         .build(device, *attachments);
     renderPasses.push_back(std::move(forwardRenderpass));
-    printf("done constructing normal renderpass\n");
 
     uint32_t preBlitOutputAttachment = attachments->add(RenderAttachments::defaultColorAttachmentDescription(false, true), colorAttachment);
     uint32_t outputAttachment = attachments->addOutput(swapchainImages, swapchainImageViews, swapchainImageFormat, viewportSize);
@@ -336,7 +335,6 @@ void VulkanBackend::initDefaultRenderpass() {
             ),
         })
         .build(device, *attachments, swapchainImages.size());
-    printf("done constructing output renderpass\n");
 }
 
 void VulkanBackend::initSyncStructs() {
@@ -410,7 +408,6 @@ void VulkanBackend::draw() {
     //naming it cmd for shorter writing
     VkCommandBuffer cmd = currentFrame().cmdBuffer;
 
-    //printf("renderpass 0\n");
     VkCommandBufferBeginInfo cmdBeginInfo = commandBufferBeginInfo(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
     VK_CHECK(vkBeginCommandBuffer(cmd, &cmdBeginInfo));
 
